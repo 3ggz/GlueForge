@@ -1,0 +1,13 @@
+# Build output
+/build/
+/dist/
+/tools/
+.vs/
+*.user
+
+# Vendored third-party (cloned, not committed)
+/libs/JUCE/
+/libs/Catch2/
+
+# Logs
+*.log
