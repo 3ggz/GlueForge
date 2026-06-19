@@ -201,3 +201,36 @@ TEST_CASE ("Processor: input/output level meters track the signal", "[processor]
     REQUIRE (approxEq (proc.getInputLevelDb(),  expected, 0.3f));
     REQUIRE (approxEq (proc.getOutputLevelDb(), expected, 0.3f)); // transparent path
 }
+
+TEST_CASE ("Processor: lookahead delays audio and reports its latency", "[processor][phase7]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::ratio, 1.0f);     // transparent compressor
+    setParamDb (proc, gf::params::id::lookahead, 1.0f); // 1 ms
+    proc.prepareToPlay (48000.0, 512);
+
+    const int L = (int) std::lround (1.0 * 48000.0 / 1000.0); // 48 samples
+    REQUIRE (proc.getLatencySamples() == L);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    buffer.clear();
+    buffer.setSample (0, 0, 1.0f);
+    buffer.setSample (1, 0, 1.0f);
+    proc.processBlock (buffer, midi);
+
+    REQUIRE (std::abs (buffer.getSample (0, 0)) < 0.01f);  // impulse delayed away from sample 0
+    REQUIRE (std::abs (buffer.getSample (0, L)) > 0.9f);   // ...and lands at L
+}
+
+TEST_CASE ("Processor: oversampling adds reported latency", "[processor][phase7]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::oversampling, 2.0f); // index 2 = 4x
+    proc.prepareToPlay (48000.0, 512);
+    REQUIRE (proc.getLatencySamples() > 0);                // FIR oversampler latency
+}

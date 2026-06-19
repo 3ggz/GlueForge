@@ -45,9 +45,42 @@ GlueForgeProcessor::GlueForgeProcessor()
     characterParam  = apvts.getRawParameterValue (gf::params::id::character);
     driveParam      = apvts.getRawParameterValue (gf::params::id::drive);
     satMixParam     = apvts.getRawParameterValue (gf::params::id::satMix);
+    lookaheadParam    = apvts.getRawParameterValue (gf::params::id::lookahead);
+    oversamplingParam = apvts.getRawParameterValue (gf::params::id::oversampling);
     bypassParam     = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
     jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr
              && mixParam != nullptr && rangeParam != nullptr && linkParam != nullptr);
+
+    // Latency changes (lookahead / oversampling) recompute PDC off the audio thread.
+    apvts.addParameterListener (gf::params::id::lookahead, this);
+    apvts.addParameterListener (gf::params::id::oversampling, this);
+}
+
+GlueForgeProcessor::~GlueForgeProcessor()
+{
+    apvts.removeParameterListener (gf::params::id::lookahead, this);
+    apvts.removeParameterListener (gf::params::id::oversampling, this);
+    cancelPendingUpdate();
+}
+
+void GlueForgeProcessor::parameterChanged (const juce::String&, float)
+{
+    triggerAsyncUpdate(); // recompute latency on the message thread
+}
+
+void GlueForgeProcessor::handleAsyncUpdate()
+{
+    updateLatency();
+}
+
+void GlueForgeProcessor::updateLatency()
+{
+    const int la = (int) std::lround (lookaheadParam->load() * currentSr / 1000.0);
+    int os = 0;
+    const int idx = (int) oversamplingParam->load();
+    if (idx > 0 && oversamplers[(size_t) (idx - 1)] != nullptr)
+        os = (int) oversamplers[(size_t) (idx - 1)]->getLatencyInSamples();
+    setLatencySamples (la + os);
 }
 
 void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -63,14 +96,28 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     dryBuffer.setSize       (numOut, samplesPerBlock, false, false, true); // pre-allocate dry copy
     detectionBuffer.setSize (numOut, samplesPerBlock, false, false, true); // key/detection signal
 
+    currentSr = sampleRate;
+
     scFilter.prepare (sampleRate, numOut);
     ducker.prepare (sampleRate);
     saturator.prepare (sampleRate, numOut);
     compressor.prepare (sampleRate, numOut);
     cpValid = false; // force coefficient recompute for the new sample rate on next block
 
-    // No lookahead/oversampling yet — but the PDC hook is live from day one.
-    setLatencySamples (0);
+    juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, (juce::uint32) numOut };
+    lookaheadDelay.prepare (spec);
+    lookaheadDelay.reset();
+
+    for (int i = 0; i < 3; ++i) // 2x / 4x / 8x
+    {
+        oversamplers[(size_t) i] = std::make_unique<juce::dsp::Oversampling<float>> (
+            (size_t) numOut, (size_t) (i + 1),
+            juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple);
+        oversamplers[(size_t) i]->initProcessing ((size_t) samplesPerBlock);
+        oversamplers[(size_t) i]->reset();
+    }
+
+    updateLatency();
 }
 
 bool GlueForgeProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -178,7 +225,21 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         return;
     }
 
-    // Keep a dry copy for the parallel (wet/dry) mix.
+    // Lookahead: delay the audio so the (undelayed) detector reacts ahead of it.
+    const int laSamples = (int) juce::jlimit (0.0, 8000.0,
+                                              std::round (lookaheadParam->load() * currentSr / 1000.0));
+    if (laSamples > 0)
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            auto* d = mainBus.getWritePointer (ch);
+            for (int n = 0; n < numSamples; ++n)
+            {
+                lookaheadDelay.pushSample (ch, d[n]);
+                d[n] = lookaheadDelay.popSample (ch, (float) laSamples);
+            }
+        }
+
+    // Keep a dry copy (post-delay, so dry/wet stay phase-aligned for the mix).
     for (int ch = 0; ch < numCh; ++ch)
         dryBuffer.copyFrom (ch, 0, mainBus.getReadPointer (ch), numSamples);
 
@@ -235,11 +296,23 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         grMeterDb.store (compressor.getGainReductionDb());
     }
 
-    // Character saturation colours the wet (processed) signal before the mix.
+    // Character saturation colours the wet signal — oversampled (around the
+    // nonlinearity) when enabled, to keep the harmonics from aliasing.
     saturator.setModel (charModel);
     saturator.setDrive (driveParam->load());
     saturator.setMix   (satMixParam->load());
-    saturator.process (mainBus);
+    const int osIdx = (int) oversamplingParam->load();
+    if (osIdx > 0 && oversamplers[(size_t) (osIdx - 1)] != nullptr)
+    {
+        juce::dsp::AudioBlock<float> baseBlock (mainBus);
+        auto osBlock = oversamplers[(size_t) (osIdx - 1)]->processSamplesUp (baseBlock);
+        saturator.process (osBlock);
+        oversamplers[(size_t) (osIdx - 1)]->processSamplesDown (baseBlock);
+    }
+    else
+    {
+        saturator.process (mainBus);
+    }
 
     // 2) Parallel mix (wet/dry) + output gain in one smoothed per-sample pass.
     mixSmoothed.setTargetValue (mixParam->load());

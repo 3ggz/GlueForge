@@ -4,6 +4,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_dsp/juce_dsp.h>
 #include <atomic>
+#include <array>
 
 #include "dsp/Compressor.h"
 #include "dsp/SidechainFilter.h"
@@ -18,11 +19,13 @@
     bus, and a wired-up latency-reporting hook. No compressor DSP yet — Phase 1's
     only job is proving host + toolchain integration.
 */
-class GlueForgeProcessor : public juce::AudioProcessor
+class GlueForgeProcessor : public juce::AudioProcessor,
+                           private juce::AudioProcessorValueTreeState::Listener,
+                           private juce::AsyncUpdater
 {
 public:
     GlueForgeProcessor();
-    ~GlueForgeProcessor() override = default;
+    ~GlueForgeProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -84,12 +87,23 @@ private:
     std::atomic<float>* characterParam = nullptr;
     std::atomic<float>* driveParam     = nullptr;
     std::atomic<float>* satMixParam    = nullptr;
+    std::atomic<float>* lookaheadParam = nullptr;
+    std::atomic<float>* oversamplingParam = nullptr;
     juce::AudioParameterBool* bypassParam = nullptr;
 
     gf::dsp::Compressor compressor;
     gf::dsp::SidechainFilter scFilter;                  // detector-path HP/LP
     gf::dsp::TempoDucker ducker;                        // tempo-synced volume shaper
     gf::dsp::Saturator saturator;                       // character coloration
+
+    // Lookahead delay + oversampling (both contribute reported latency / PDC).
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> lookaheadDelay { 8192 };
+    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers; // 2x / 4x / 8x
+    double currentSr = 44100.0;
+
+    void updateLatency();
+    void parameterChanged (const juce::String& parameterID, float newValue) override;
+    void handleAsyncUpdate() override;
     gf::dsp::CompressorParameters lastCp;               // last applied params (change detection)
     bool cpValid = false;
     juce::AudioBuffer<float> detectionBuffer;           // key signal fed to the detector

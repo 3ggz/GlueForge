@@ -37,6 +37,8 @@ namespace gf::params
         constexpr auto character = "character";  // VCA / FET / Opto
         constexpr auto drive     = "drive";      // saturation drive, 0..1
         constexpr auto satMix    = "satmix";     // saturation wet/dry, 0..1
+        constexpr auto lookahead = "lookahead";  // ms
+        constexpr auto oversampling = "oversampling"; // Off / 2x / 4x / 8x
         constexpr auto gain      = "gain";      // output gain, dB
         constexpr auto bypass    = "bypass";
     }
@@ -111,6 +113,13 @@ namespace gf::params
                                  NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.3f, ""));
         p.push_back (floatParam (id::satMix, "Sat Mix",
                                  NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f, ""));
+
+        // Lookahead + oversampling (both report latency / PDC)
+        p.push_back (floatParam (id::lookahead, "Lookahead",
+                                 NormalisableRange<float> (0.0f, 10.0f, 0.1f), 0.0f, "ms"));
+        p.push_back (std::make_unique<AudioParameterChoice> (
+            ParameterID { id::oversampling, 1 }, "Oversampling",
+            StringArray { "Off", "2x", "4x", "8x" }, 0));
 
         p.push_back (floatParam (id::gain, "Output",
                                  NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB"));

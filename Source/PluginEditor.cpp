@@ -92,6 +92,8 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     addRotary (params::id::drive,     "Drive");
     addRotary (params::id::satMix,    "Sat Mix");
     addRotary (params::id::mix,       "Mix");
+    addRotary (params::id::lookahead, "Look");
+    addCombo  (params::id::oversampling, "OS");
 
     setResizable (true, true);
     setResizeLimits (820, 560, 1400, 1000);
@@ -256,13 +258,15 @@ void GlueForgeEditor::resized()
                                    params::id::makeup, params::id::gain, params::id::automakeup };
     const juce::StringArray row3 { params::id::trigger, params::id::scHpf, params::id::scLpf, params::id::scListen };
     const juce::StringArray row4 { params::id::duckRate, params::id::duckDepth, params::id::duckCurve,
-                                   params::id::character, params::id::drive, params::id::satMix, params::id::mix };
+                                   params::id::character, params::id::drive, params::id::satMix };
+    const juce::StringArray row5 { params::id::mix, params::id::lookahead, params::id::oversampling };
 
-    const int rh = r.getHeight() / 4;
+    const int rh = r.getHeight() / 5;
     layoutRow (r.removeFromTop (rh), row1);
     layoutRow (r.removeFromTop (rh), row2);
     layoutRow (r.removeFromTop (rh), row3);
-    layoutRow (r, row4);
+    layoutRow (r.removeFromTop (rh), row4);
+    layoutRow (r, row5);
 }
 
 void GlueForgeEditor::paint (juce::Graphics& g)

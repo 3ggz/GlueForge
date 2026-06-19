@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_dsp/juce_dsp.h>
 #include <cmath>
 
 namespace gf::dsp
@@ -41,17 +42,24 @@ namespace gf::dsp
 
         void process (juce::AudioBuffer<float>& buffer)
         {
+            process (juce::dsp::AudioBlock<float> (buffer));
+        }
+
+        void process (juce::dsp::AudioBlock<float> block)
+        {
             if (mix_ <= 0.0f) return; // fully clean — skip
 
-            const int n  = buffer.getNumSamples();
-            const int ch = buffer.getNumChannels();
-            auto* const* w = buffer.getArrayOfWritePointers();
-            for (int c = 0; c < ch; ++c)
-                for (int i = 0; i < n; ++i)
+            const size_t nc = block.getNumChannels();
+            const size_t ns = block.getNumSamples();
+            for (size_t c = 0; c < nc; ++c)
+            {
+                auto* d = block.getChannelPointer (c);
+                for (size_t i = 0; i < ns; ++i)
                 {
-                    const float x = w[c][i];
-                    w[c][i] = mix_ * saturateSample (model_, x, drive_) + (1.0f - mix_) * x;
+                    const float x = d[i];
+                    d[i] = mix_ * saturateSample (model_, x, drive_) + (1.0f - mix_) * x;
                 }
+            }
         }
 
         static float saturateSample (CharacterModel m, float x, float drive01)
