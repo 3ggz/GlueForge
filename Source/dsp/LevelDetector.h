@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DspUtils.h"
 #include <cmath>
 
 namespace gf::dsp
@@ -23,8 +24,8 @@ namespace gf::dsp
         void prepare (double sampleRate)
         {
             sr_           = sampleRate > 0.0 ? sampleRate : 44100.0;
-            peakRelCoeff_ = onePole (peakReleaseMs_, sr_);
-            rmsCoeff_     = onePole (rmsWindowMs_,   sr_);
+            peakRelCoeff_ = onePoleCoeff (peakReleaseMs_, sr_);
+            rmsCoeff_     = onePoleCoeff (rmsWindowMs_,   sr_);
             reset();
         }
 
@@ -56,12 +57,6 @@ namespace gf::dsp
         }
 
     private:
-        static float onePole (float ms, double sr)
-        {
-            if (ms <= 0.0f) return 0.0f;
-            return (float) std::exp (-1.0 / ((double) ms * 0.001 * sr));
-        }
-
         double sr_ = 44100.0;
         float blend_ = 0.0f;
         float peakReleaseMs_ = 50.0f, rmsWindowMs_ = 10.0f;

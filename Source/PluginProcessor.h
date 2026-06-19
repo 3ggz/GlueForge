@@ -13,12 +13,17 @@
 #include "dsp/Multiband.h"
 
 /**
-    GlueForge — Phase 1 skeleton.
+    GlueForge — a real-time-safe stereo dynamics processor.
 
-    A real-time-safe stereo plugin with a single smoothed Gain parameter, a soft
-    Bypass, APVTS-backed state, a declared (disabled-by-default) sidechain input
-    bus, and a wired-up latency-reporting hook. No compressor DSP yet — Phase 1's
-    only job is proving host + toolchain integration.
+    Signal chain (per block): input meter → latency-compensated bypass → host
+    transport → detection signal (internal / external sidechain) + SC filter →
+    SC-listen audition → lookahead delay → dry copy → M/S encode → wet stage
+    (tempo-duck volume-shaper | 3-band multiband | single compressor) → M/S decode
+    → character saturation (oversampled when enabled) → parallel wet/dry mix +
+    output gain → output meter. Reports lookahead + oversampling latency (PDC).
+
+    All DSP lives in header-only units under Source/dsp/; APVTS holds the ~48
+    parameters for automation, preset and session recall.
 */
 class GlueForgeProcessor : public juce::AudioProcessor,
                            private juce::AudioProcessorValueTreeState::Listener,
@@ -62,6 +67,13 @@ public:
     juce::AudioProcessorValueTreeState apvts;
 
 private:
+    static constexpr int    kDelayLineCapacity = 8192;  // samples; covers 10 ms lookahead + OS
+    static constexpr int    kMaxDelaySamples   = 8000;  // lookahead clamp (< capacity)
+    static constexpr double kSmoothingSeconds  = 0.02;  // 20 ms ramp for gain/mix smoothers
+
+    // Returns the oversampler selected by the oversampling param, or nullptr (Off).
+    juce::dsp::Oversampling<float>* activeOversampler();
+
     // Cached raw parameter pointers (read on the audio thread).
     std::atomic<float>* gainParam      = nullptr; // output gain, dB
     std::atomic<float>* thresholdParam = nullptr;
@@ -106,9 +118,9 @@ private:
     gf::dsp::Multiband multiband;                       // 3-band LR4 multiband
 
     // Lookahead delay + oversampling (both contribute reported latency / PDC).
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> lookaheadDelay { 8192 };
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay { 8192 };    // matches OS latency
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> bypassDelay { 8192 }; // latency-compensated bypass
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> lookaheadDelay { kDelayLineCapacity };
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay { kDelayLineCapacity };    // matches OS latency
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> bypassDelay { kDelayLineCapacity }; // latency-compensated bypass
     std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers; // 2x / 4x / 8x
     double currentSr = 44100.0;
 

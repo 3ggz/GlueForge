@@ -455,3 +455,50 @@ TEST_CASE ("Multiband: solo isolates a band's frequency range", "[dsp][multiband
     lo.setSolo (0);                                  // solo LOW band
     REQUIRE (multibandOutRms (lo, 100.0f) > 0.5f);   // 100 Hz passes
 }
+
+TEST_CASE ("Multiband: per-band bypass passes the band uncompressed", "[dsp][multiband][phase9]")
+{
+    CompressorParameters p;
+    p.thresholdDb = -40.0f; p.ratio = 10.0f; p.kneeDb = 0.0f; p.attackMs = 2.0f; p.releaseMs = 50.0f;
+
+    auto run = [&] (bool lowBypassed)
+    {
+        Multiband mb; mb.prepare (48000.0, 1, 512); mb.setCrossovers (200.0f, 2000.0f);
+        mb.setCompressorParams (p);
+        mb.setBand (0, 0.0f, lowBypassed); mb.setBand (1, 0.0f, false); mb.setBand (2, 0.0f, false);
+        mb.setSolo (-1);
+        return multibandOutRms (mb, 100.0f); // 100 Hz lives in the low band
+    };
+
+    REQUIRE (run (true) > run (false)); // bypassed low band is louder than the compressed one
+}
+
+TEST_CASE ("Multiband: per-band trim scales the band level", "[dsp][multiband][phase9]")
+{
+    CompressorParameters p; p.ratio = 1.0f; // transparent
+
+    auto run = [&] (float lowTrimDb)
+    {
+        Multiband mb; mb.prepare (48000.0, 1, 512); mb.setCrossovers (200.0f, 2000.0f);
+        mb.setCompressorParams (p);
+        mb.setBand (0, lowTrimDb, false); mb.setBand (1, 0.0f, false); mb.setBand (2, 0.0f, false);
+        mb.setSolo (0); // solo low so only the trimmed band contributes
+        return multibandOutRms (mb, 100.0f);
+    };
+
+    const float unity = run (0.0f), minus6 = run (-6.0f);
+    REQUIRE (approx (minus6 / unity, juce::Decibels::decibelsToGain (-6.0f), 0.05f)); // ~0.5
+}
+
+TEST_CASE ("Saturator: process() blends wet and dry at mix 0.5", "[dsp][sat][phase9]")
+{
+    juce::AudioBuffer<float> b (1, 8);
+    for (int i = 0; i < 8; ++i) b.setSample (0, i, 0.8f);
+
+    Saturator s; s.prepare (48000.0, 1);
+    s.setModel (CharacterModel::VCA); s.setDrive (1.0f); s.setMix (0.5f);
+    s.process (b);
+
+    const float expected = 0.5f * Saturator::saturateSample (CharacterModel::VCA, 0.8f, 1.0f) + 0.5f * 0.8f;
+    REQUIRE (approx (b.getSample (0, 4), expected, 1.0e-5f));
+}

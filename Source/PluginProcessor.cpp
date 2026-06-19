@@ -25,6 +25,22 @@ namespace
         auto* m = buf.getWritePointer (0); auto* s = buf.getWritePointer (1);
         for (int i = 0; i < n; ++i) { const float M = m[i], S = s[i]; m[i] = M + S; s[i] = M - S; }
     }
+
+    using GfDelayLine = juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None>;
+
+    // Delay a buffer in place by an integer sample count, per channel.
+    void applyDelay (GfDelayLine& line, juce::AudioBuffer<float>& buf, int numCh, int n, int delaySamples)
+    {
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            auto* d = buf.getWritePointer (ch);
+            for (int i = 0; i < n; ++i)
+            {
+                line.pushSample (ch, d[i]);
+                d[i] = line.popSample (ch, (float) delaySamples);
+            }
+        }
+    }
 }
 
 GlueForgeProcessor::GlueForgeProcessor()
@@ -98,13 +114,20 @@ void GlueForgeProcessor::handleAsyncUpdate()
     updateLatency();
 }
 
+juce::dsp::Oversampling<float>* GlueForgeProcessor::activeOversampler()
+{
+    const int idx = (int) oversamplingParam->load();
+    if (idx > 0 && (size_t) (idx - 1) < oversamplers.size() && oversamplers[(size_t) (idx - 1)] != nullptr)
+        return oversamplers[(size_t) (idx - 1)].get();
+    return nullptr;
+}
+
 void GlueForgeProcessor::updateLatency()
 {
     const int la = (int) std::lround (lookaheadParam->load() * currentSr / 1000.0);
     int os = 0;
-    const int idx = (int) oversamplingParam->load();
-    if (idx > 0 && oversamplers[(size_t) (idx - 1)] != nullptr)
-        os = (int) oversamplers[(size_t) (idx - 1)]->getLatencyInSamples();
+    if (auto* ovs = activeOversampler())
+        os = (int) ovs->getLatencyInSamples();
     setLatencySamples (la + os);
 }
 
@@ -112,10 +135,10 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     const int numOut = juce::jmax (1, getMainBusNumOutputChannels());
 
-    gainSmoothed.reset (sampleRate, 0.02); // 20 ms ramp — click-free
+    gainSmoothed.reset (sampleRate, kSmoothingSeconds); // click-free
     gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
 
-    mixSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.reset (sampleRate, kSmoothingSeconds);
     mixSmoothed.setCurrentAndTargetValue (mixParam->load());
 
     dryBuffer.setSize       (numOut, samplesPerBlock, false, false, true); // pre-allocate dry copy
@@ -188,15 +211,7 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         // track stays time-aligned with the rest of the session (host PDC assumes it).
         const int lat = getLatencySamples();
         if (lat > 0)
-            for (int ch = 0; ch < numCh; ++ch)
-            {
-                auto* d = mainBus.getWritePointer (ch);
-                for (int n = 0; n < numSamples; ++n)
-                {
-                    bypassDelay.pushSample (ch, d[n]);
-                    d[n] = bypassDelay.popSample (ch, (float) lat);
-                }
-            }
+            applyDelay (bypassDelay, mainBus, numCh, numSamples, lat);
 
         gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
         mixSmoothed.setCurrentAndTargetValue (mixParam->load());
@@ -265,18 +280,10 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     }
 
     // Lookahead: delay the audio so the (undelayed) detector reacts ahead of it.
-    const int laSamples = (int) juce::jlimit (0.0, 8000.0,
-                                              std::round (lookaheadParam->load() * currentSr / 1000.0));
+    const int laSamples = juce::jlimit (0, kMaxDelaySamples,
+                                        (int) std::lround (lookaheadParam->load() * currentSr / 1000.0));
     if (laSamples > 0)
-        for (int ch = 0; ch < numCh; ++ch)
-        {
-            auto* d = mainBus.getWritePointer (ch);
-            for (int n = 0; n < numSamples; ++n)
-            {
-                lookaheadDelay.pushSample (ch, d[n]);
-                d[n] = lookaheadDelay.popSample (ch, (float) laSamples);
-            }
-        }
+        applyDelay (lookaheadDelay, mainBus, numCh, numSamples, laSamples);
 
     // Keep a dry copy (post-delay, so dry/wet stay phase-aligned for the mix).
     for (int ch = 0; ch < numCh; ++ch)
@@ -365,13 +372,12 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     saturator.setModel (charModel);
     saturator.setDrive (driveParam->load());
     saturator.setMix   (satMixParam->load());
-    const int osIdx = (int) oversamplingParam->load();
-    if (osIdx > 0 && oversamplers[(size_t) (osIdx - 1)] != nullptr)
+    if (auto* ovs = activeOversampler())
     {
         juce::dsp::AudioBlock<float> baseBlock (mainBus);
-        auto osBlock = oversamplers[(size_t) (osIdx - 1)]->processSamplesUp (baseBlock);
+        auto osBlock = ovs->processSamplesUp (baseBlock);
         saturator.process (osBlock);
-        oversamplers[(size_t) (osIdx - 1)]->processSamplesDown (baseBlock);
+        ovs->processSamplesDown (baseBlock);
     }
     else
     {
@@ -380,19 +386,11 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     // Phase-align the dry path with the oversampler latency added to the wet path,
     // so the parallel mix doesn't comb-filter when OS is on and mix < 1.
-    if (osIdx > 0 && oversamplers[(size_t) (osIdx - 1)] != nullptr)
+    if (auto* ovs = activeOversampler())
     {
-        const int osLat = (int) oversamplers[(size_t) (osIdx - 1)]->getLatencyInSamples();
+        const int osLat = (int) ovs->getLatencyInSamples();
         if (osLat > 0)
-            for (int ch = 0; ch < numCh; ++ch)
-            {
-                auto* dch = dryBuffer.getWritePointer (ch);
-                for (int n = 0; n < numSamples; ++n)
-                {
-                    dryDelay.pushSample (ch, dch[n]);
-                    dch[n] = dryDelay.popSample (ch, (float) osLat);
-                }
-            }
+            applyDelay (dryDelay, dryBuffer, numCh, numSamples, osLat);
     }
 
     // 2) Parallel mix (wet/dry) + output gain in one smoothed per-sample pass.

@@ -324,3 +324,78 @@ TEST_CASE ("Processor: bypass is latency-compensated", "[processor][phase9]")
     REQUIRE (std::abs (buffer.getSample (0, 0)) < 0.01f);
     REQUIRE (std::abs (buffer.getSample (0, L)) > 0.9f);
 }
+
+TEST_CASE ("Processor: state round-trips with many parameters set", "[state][phase9]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    namespace id = gf::params::id;
+
+    GlueForgeProcessor a;
+    setParamDb (a, id::threshold, -22.0f); setParamDb (a, id::ratio, 6.0f); setParamDb (a, id::knee, 3.0f);
+    setParamDb (a, id::attack, 7.0f);      setParamDb (a, id::release, 250.0f); setParamDb (a, id::hold, 30.0f);
+    setParamDb (a, id::makeup, 4.0f);      setParamDb (a, id::detector, 0.7f); setParamDb (a, id::mix, 0.6f);
+    setParamDb (a, id::range, 12.0f);      setParamDb (a, id::link, 0.3f);     setParamDb (a, id::gain, -3.0f);
+    setParamDb (a, id::trigger, 1.0f);     setParamDb (a, id::character, 2.0f); setParamDb (a, id::drive, 0.8f);
+    setParamDb (a, id::satMix, 0.5f);      setParamDb (a, id::lookahead, 3.0f); setParamDb (a, id::oversampling, 2.0f);
+    setParamDb (a, id::midside, 1.0f);     setParamDb (a, id::mbEnable, 1.0f);  setParamDb (a, id::mbXLow, 150.0f);
+
+    juce::MemoryBlock blob;
+    a.getStateInformation (blob);
+    GlueForgeProcessor b;
+    b.setStateInformation (blob.getData(), (int) blob.getSize());
+
+    for (const char* pid : { id::threshold, id::ratio, id::knee, id::attack, id::release, id::hold,
+                             id::makeup, id::detector, id::mix, id::range, id::link, id::gain, id::drive,
+                             id::satMix, id::lookahead, id::mbXLow, id::trigger, id::character,
+                             id::oversampling, id::midside, id::mbEnable })
+        REQUIRE (approxEq (a.apvts.getRawParameterValue (pid)->load(),
+                           b.apvts.getRawParameterValue (pid)->load(), 0.01f));
+}
+
+TEST_CASE ("Processor: SC-listen outputs the detection signal, not the compressed output", "[processor][phase9]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::threshold, -60.0f); // would crush hard...
+    setParamDb (proc, gf::params::id::ratio, 20.0f);
+    setParamDb (proc, gf::params::id::scListen, 1.0f);    // ...but SC-listen bypasses compression
+    proc.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    float last = 0.0f;
+    for (int b = 0; b < 8; ++b)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (ch), 0.5f, 512);
+        proc.processBlock (buffer, midi);
+        last = std::abs (buffer.getSample (0, 256));
+    }
+    // Detection (= main, default SC filter bypassed) passes at unity, uncompressed.
+    REQUIRE (approxEq (last, 0.5f, 0.05f));
+}
+
+TEST_CASE ("Processor: M/S round-trips asymmetric stereo when transparent", "[processor][phase9]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::ratio, 1.0f);    // transparent compressor
+    setParamDb (proc, gf::params::id::midside, 1.0f);  // M/S on
+    proc.prepareToPlay (48000.0, 64);
+
+    juce::AudioBuffer<float> buf (2, 64);
+    for (int i = 0; i < 64; ++i) { buf.setSample (0, i, 0.4f * std::sin (i * 0.3f)); buf.setSample (1, i, -0.25f * std::cos (i * 0.2f)); }
+    juce::AudioBuffer<float> in; in.makeCopyOf (buf);
+
+    juce::MidiBuffer midi;
+    proc.processBlock (buf, midi);
+
+    // encode -> (transparent) -> decode must reconstruct the asymmetric L/R exactly.
+    for (int i = 0; i < 64; ++i)
+    {
+        REQUIRE (approxEq (buf.getSample (0, i), in.getSample (0, i), 1.0e-4f));
+        REQUIRE (approxEq (buf.getSample (1, i), in.getSample (1, i), 1.0e-4f));
+    }
+}

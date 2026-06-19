@@ -44,7 +44,7 @@ namespace gf::ui
         {
             auto b = getLocalBounds().toFloat();
             g.setColour (colours::track); g.fillRoundedRectangle (b, 2.0f);
-            const float norm = juce::jlimit (0.0f, 1.0f, display_ / 30.0f);
+            const float norm = juce::jlimit (0.0f, 1.0f, display_ / 36.0f);
             g.setColour (colours::accent2);
             g.fillRoundedRectangle (b.withHeight (b.getHeight() * norm), 2.0f);
         }

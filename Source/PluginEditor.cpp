@@ -73,8 +73,8 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     addRotary (params::id::release,   "Release");
     addRotary (params::id::hold,      "Hold");
 
-    addRotary (params::id::detector,  "Det P/R");
-    addRotary (params::id::range,     "Range");
+    addRotary (params::id::detector,  "Detect");
+    addRotary (params::id::range,     "Max GR");
     addRotary (params::id::link,      "Link");
     addRotary (params::id::makeup,    "Makeup");
     addRotary (params::id::gain,      "Output");

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DspUtils.h"
 #include <cmath>
 
 namespace gf::dsp
@@ -64,16 +65,10 @@ namespace gf::dsp
         float getCurrent() const { return current_; }
 
     private:
-        static float coeff (float ms, double sr)
-        {
-            if (ms <= 0.0f) return 0.0f;
-            return (float) std::exp (-1.0 / ((double) ms * 0.001 * sr));
-        }
-
         void recompute()
         {
-            attackCoeff_  = coeff (attackMs_,  sr_);
-            releaseCoeff_ = coeff (releaseMs_, sr_);
+            attackCoeff_  = onePoleCoeff (attackMs_,  sr_);
+            releaseCoeff_ = onePoleCoeff (releaseMs_, sr_);
             holdSamples_  = (int) std::lround ((double) holdMs_ * 0.001 * sr_);
         }
 

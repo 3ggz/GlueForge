@@ -62,6 +62,11 @@ namespace gf::ui
 
     inline void applyPreset (juce::AudioProcessorValueTreeState& apvts, const Preset& p)
     {
+        // Reset every parameter to its default first so a preset is deterministic
+        // regardless of prior state, then apply the preset's overrides.
+        for (auto* param : apvts.processor.getParameters())
+            param->setValueNotifyingHost (param->getDefaultValue());
+
         for (auto& kv : p.values)
             if (auto* prm = apvts.getParameter (kv.first))
                 prm->setValueNotifyingHost (prm->convertTo0to1 (kv.second));
