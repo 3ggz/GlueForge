@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "dsp/TempoSync.h"
 #include <memory>
 #include <vector>
 
@@ -28,6 +29,11 @@ namespace gf::params
         constexpr auto scHpf     = "schpf";     // sidechain detector high-pass, Hz
         constexpr auto scLpf     = "sclpf";     // sidechain detector low-pass, Hz
         constexpr auto scListen  = "sclisten";  // audition the detection signal
+        constexpr auto duckRate  = "duckrate";   // tempo-duck note division
+        constexpr auto duckDepth = "duckdepth";  // tempo-duck depth, dB
+        constexpr auto duckCurve = "duckcurve";  // tempo-duck recovery curve, 0..1
+        constexpr auto syncRelease = "syncrelease";
+        constexpr auto releaseDiv  = "releasediv"; // tempo-synced release division
         constexpr auto gain      = "gain";      // output gain, dB
         constexpr auto bypass    = "bypass";
     }
@@ -85,6 +91,16 @@ namespace gf::params
         p.push_back (floatParam (id::scLpf, "SC LPF",
                                  skewed (200.0f, 20000.0f, 1.0f, 2000.0f), 20000.0f, "Hz"));
 
+        // Tempo-synced ducking + synced release
+        p.push_back (std::make_unique<AudioParameterChoice> (
+            ParameterID { id::duckRate, 1 }, "Duck Rate", gf::dsp::divisionChoices(), 2)); // 1/4
+        p.push_back (floatParam (id::duckDepth, "Duck Depth",
+                                 NormalisableRange<float> (0.0f, 36.0f, 0.1f), 12.0f, "dB"));
+        p.push_back (floatParam (id::duckCurve, "Duck Curve",
+                                 NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f, ""));
+        p.push_back (std::make_unique<AudioParameterChoice> (
+            ParameterID { id::releaseDiv, 1 }, "Release Div", gf::dsp::divisionChoices(), 3)); // 1/8
+
         p.push_back (floatParam (id::gain, "Output",
                                  NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB"));
 
@@ -92,6 +108,8 @@ namespace gf::params
             ParameterID { id::automakeup, 1 }, "Auto Makeup", false));
         p.push_back (std::make_unique<AudioParameterBool> (
             ParameterID { id::scListen, 1 }, "SC Listen", false));
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::syncRelease, 1 }, "Sync Release", false));
         p.push_back (std::make_unique<AudioParameterBool> (
             ParameterID { id::bypass, 1 }, "Bypass", false));
 

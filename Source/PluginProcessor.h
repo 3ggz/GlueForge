@@ -7,6 +7,7 @@
 
 #include "dsp/Compressor.h"
 #include "dsp/SidechainFilter.h"
+#include "dsp/TempoDucker.h"
 
 /**
     GlueForge — Phase 1 skeleton.
@@ -72,10 +73,16 @@ private:
     std::atomic<float>* scHpfParam     = nullptr;
     std::atomic<float>* scLpfParam     = nullptr;
     std::atomic<float>* scListenParam  = nullptr;
+    std::atomic<float>* duckRateParam  = nullptr;
+    std::atomic<float>* duckDepthParam = nullptr;
+    std::atomic<float>* duckCurveParam = nullptr;
+    std::atomic<float>* syncReleaseParam = nullptr;
+    std::atomic<float>* releaseDivParam  = nullptr;
     juce::AudioParameterBool* bypassParam = nullptr;
 
     gf::dsp::Compressor compressor;
     gf::dsp::SidechainFilter scFilter;                  // detector-path HP/LP
+    gf::dsp::TempoDucker ducker;                        // tempo-synced volume shaper
     gf::dsp::CompressorParameters lastCp;               // last applied params (change detection)
     bool cpValid = false;
     juce::AudioBuffer<float> detectionBuffer;           // key signal fed to the detector

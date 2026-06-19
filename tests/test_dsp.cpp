@@ -7,6 +7,8 @@
 #include "dsp/LevelDetector.h"
 #include "dsp/Compressor.h"
 #include "dsp/SidechainFilter.h"
+#include "dsp/TempoDucker.h"
+#include "dsp/TempoSync.h"
 
 #include <cmath>
 #include <vector>
@@ -340,4 +342,27 @@ TEST_CASE ("Compressor: external detection ducks a quiet main when the key is lo
         ref.computeGainReductionDb (juce::Decibels::gainToDecibels (0.5f, -100.0f)));
     // The quiet main is reduced by the KEY-driven gain reduction (detection decoupled).
     REQUIRE (approx (std::abs (lastMain), 0.05f * expGain, 0.001f));
+}
+
+// ───────────────────────── Phase 4b: tempo-synced ducking + sync helpers ─────────────────────────
+
+TEST_CASE ("TempoSync: note division converts to milliseconds", "[dsp][temposync][phase4]")
+{
+    REQUIRE (approx ((float) beatsToMs (divisionBeats (3), 120.0), 250.0f, 0.01f)); // 1/8 @120 = 250 ms
+    REQUIRE (approx ((float) beatsToMs (divisionBeats (2), 120.0), 500.0f, 0.01f)); // 1/4 @120 = 500 ms
+}
+
+TEST_CASE ("TempoDucker: dips on the downbeat and recovers", "[dsp][ducker][phase4]")
+{
+    TempoDucker d; d.prepare (48000.0); d.setParameters (24.0f, 2.0f);
+    REQUIRE (approx (d.gainForPhase (0.0f), juce::Decibels::decibelsToGain (-24.0f), 1.0e-4f));
+    REQUIRE (d.gainForPhase (0.999f) > 0.99f);
+    REQUIRE (d.gainForPhase (0.25f) < d.gainForPhase (0.75f)); // monotonic recovery
+}
+
+TEST_CASE ("TempoDucker: syncToPpq lands at the right phase", "[dsp][ducker][phase4]")
+{
+    TempoDucker d; d.prepare (48000.0); d.setParameters (12.0f, 2.0f); d.setRate (120.0, 1.0);
+    d.syncToPpq (2.5, 1.0);                                  // half-way through a 1-beat cycle
+    REQUIRE (approx (d.processSample(), d.gainForPhase (0.5f), 1.0e-3f));
 }

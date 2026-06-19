@@ -26,6 +26,11 @@ GlueForgeProcessor::GlueForgeProcessor()
     scHpfParam      = apvts.getRawParameterValue (gf::params::id::scHpf);
     scLpfParam      = apvts.getRawParameterValue (gf::params::id::scLpf);
     scListenParam   = apvts.getRawParameterValue (gf::params::id::scListen);
+    duckRateParam   = apvts.getRawParameterValue (gf::params::id::duckRate);
+    duckDepthParam  = apvts.getRawParameterValue (gf::params::id::duckDepth);
+    duckCurveParam  = apvts.getRawParameterValue (gf::params::id::duckCurve);
+    syncReleaseParam = apvts.getRawParameterValue (gf::params::id::syncRelease);
+    releaseDivParam  = apvts.getRawParameterValue (gf::params::id::releaseDiv);
     bypassParam     = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
     jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr
              && mixParam != nullptr && rangeParam != nullptr && linkParam != nullptr);
@@ -45,6 +50,7 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     detectionBuffer.setSize (numOut, samplesPerBlock, false, false, true); // key/detection signal
 
     scFilter.prepare (sampleRate, numOut);
+    ducker.prepare (sampleRate);
     compressor.prepare (sampleRate, numOut);
     cpValid = false; // force coefficient recompute for the new sample rate on next block
 
@@ -94,6 +100,16 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         grMeterDb.store (0.0f);
         return;
     }
+
+    // Host transport for tempo-sync; falls back to 120 BPM when unavailable.
+    double bpm = 120.0, ppq = 0.0;
+    bool havePos = false;
+    if (auto* ph = getPlayHead())
+        if (auto pos = ph->getPosition())
+        {
+            if (auto b = pos->getBpm())         bpm = *b;
+            if (auto q = pos->getPpqPosition()) { ppq = *q; havePos = true; }
+        }
 
     // --- Build the detection (key) signal: external sidechain if selected and
     //     actually connected, otherwise the main signal; then the SC filter. ---
@@ -147,27 +163,54 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (int ch = 0; ch < numCh; ++ch)
         dryBuffer.copyFrom (ch, 0, mainBus.getReadPointer (ch), numSamples);
 
-    // 1) Compression (detector -> static curve -> range -> ballistics -> gain + makeup).
-    gf::dsp::CompressorParameters cp;
-    cp.thresholdDb   = thresholdParam->load();
-    cp.ratio         = ratioParam->load();
-    cp.kneeDb        = kneeParam->load();
-    cp.attackMs      = attackParam->load();
-    cp.releaseMs     = releaseParam->load();
-    cp.holdMs        = holdParam->load();
-    cp.makeupDb      = makeupParam->load();
-    cp.detectorBlend = detectorParam->load();
-    cp.rangeDb       = rangeParam->load();
-    cp.stereoLink    = linkParam->load();
-    cp.autoMakeup    = autoMakeupParam->load() >= 0.5f;
-    if (! cpValid || cp != lastCp)        // only recompute coefficients when something changed
+    // 1) Wet generation: tempo-synced volume-shaper duck, or the compressor.
+    if (trigger == 2) // Tempo Duck
     {
-        compressor.setParameters (cp);
-        lastCp  = cp;
-        cpValid = true;
+        ducker.setParameters (duckDepthParam->load(),
+                              juce::jmap (duckCurveParam->load(), 0.0f, 1.0f, 0.3f, 4.0f));
+        const double divBeats = gf::dsp::divisionBeats ((int) duckRateParam->load());
+        ducker.setRate (bpm, divBeats);
+        if (havePos)
+            ducker.syncToPpq (ppq, divBeats); // re-lock to the host transport each block
+
+        auto* const* w = mainBus.getArrayOfWritePointers();
+        float worst = 0.0f;
+        for (int n = 0; n < numSamples; ++n)
+        {
+            const float g = ducker.processSample();
+            for (int ch = 0; ch < numCh; ++ch)
+                w[ch][n] *= g;
+            worst = juce::jmin (worst, juce::Decibels::gainToDecibels (g, -100.0f));
+        }
+        grMeterDb.store (worst);
     }
-    compressor.process (mainBus, &detectionBuffer);
-    grMeterDb.store (compressor.getGainReductionDb());
+    else // Internal / External SC -> the compressor
+    {
+        gf::dsp::CompressorParameters cp;
+        cp.thresholdDb   = thresholdParam->load();
+        cp.ratio         = ratioParam->load();
+        cp.kneeDb        = kneeParam->load();
+        cp.attackMs      = attackParam->load();
+        // Synced release depends on BPM (external to the param set) — compute it
+        // into cp.releaseMs *before* the change check so a tempo change re-applies.
+        cp.releaseMs     = (syncReleaseParam->load() >= 0.5f)
+                             ? (float) gf::dsp::beatsToMs (gf::dsp::divisionBeats ((int) releaseDivParam->load()), bpm)
+                             : releaseParam->load();
+        cp.holdMs        = holdParam->load();
+        cp.makeupDb      = makeupParam->load();
+        cp.detectorBlend = detectorParam->load();
+        cp.rangeDb       = rangeParam->load();
+        cp.stereoLink    = linkParam->load();
+        cp.autoMakeup    = autoMakeupParam->load() >= 0.5f;
+        if (! cpValid || cp != lastCp)    // only recompute coefficients when something changed
+        {
+            compressor.setParameters (cp);
+            lastCp  = cp;
+            cpValid = true;
+        }
+        compressor.process (mainBus, &detectionBuffer);
+        grMeterDb.store (compressor.getGainReductionDb());
+    }
 
     // 2) Parallel mix (wet/dry) + output gain in one smoothed per-sample pass.
     mixSmoothed.setTargetValue (mixParam->load());

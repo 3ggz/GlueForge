@@ -149,3 +149,33 @@ TEST_CASE ("Processor: parallel mix at 0% passes the dry signal", "[processor][p
 
     REQUIRE (approxEq (buffer.getSample (0, 256), 0.5f, 1.0e-3f));
 }
+
+TEST_CASE ("Processor: tempo-duck mode modulates the level", "[processor][phase4]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::trigger,   2.0f); // Tempo Duck
+    setParamDb (proc, gf::params::id::duckDepth, 24.0f);
+    setParamDb (proc, gf::params::id::duckRate,  2.0f); // 1/4
+    proc.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    float mn = 1.0e9f, mx = -1.0e9f;
+    for (int b = 0; b < 200; ++b) // ~2.1 s -> several 1/4-note cycles at the 120 BPM fallback
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (ch), 1.0f, 512);
+        proc.processBlock (buffer, midi);
+        for (int i = 0; i < 512; ++i)
+        {
+            const float v = std::abs (buffer.getSample (0, i));
+            mn = juce::jmin (mn, v);
+            mx = juce::jmax (mx, v);
+        }
+    }
+    // Envelope sweeps from minGain (~ -24 dB) up to ~unity each cycle.
+    REQUIRE (mx > 0.9f);
+    REQUIRE (mn < 0.2f);
+}
