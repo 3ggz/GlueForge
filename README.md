@@ -54,6 +54,17 @@ Artifacts: `build/GlueForge_artefacts/Release/VST3/GlueForge.vst3` and `.../Stan
 Then **Rescan** in Ableton and drop **GlueForge** on a track. For the **external sidechain**, route a
 source (e.g. the kick) to GlueForge's sidechain input and set **Trigger = External SC**.
 
+## Updating
+
+- **One command (from source):** `pwsh scripts/update.ps1` — pulls the latest, rebuilds, and
+  installs the VST3. Rescan in your DAW afterwards.
+- **From a release:** download the latest `GlueForge-Setup-*.exe` from the GitHub
+  [Releases](https://github.com/3ggz/GlueForge/releases) page and run it.
+- **Cut a release:** `git tag v0.1.1 && git push origin v0.1.1` — GitHub Actions builds, tests,
+  compiles the installer, and publishes it to Releases automatically.
+
+(An in-app "check for updates" is intentionally deferred to keep the plugin lightweight.)
+
 ## Architecture
 
 Header-only, RT-safe DSP units in `Source/dsp/` — each independently unit-tested:
