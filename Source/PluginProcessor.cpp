@@ -133,6 +133,7 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, (juce::uint32) numOut };
     lookaheadDelay.prepare (spec); lookaheadDelay.reset();
     dryDelay.prepare (spec);       dryDelay.reset();
+    bypassDelay.prepare (spec);    bypassDelay.reset();
 
     for (int i = 0; i < 3; ++i) // 2x / 4x / 8x
     {
@@ -183,12 +184,24 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     if (bypassParam->get())
     {
-        // Bypassed: audio passes through untouched. Keep state in sync so
-        // re-engaging does not jump.
+        // Bypassed: pass audio through, but delay it by the reported latency so the
+        // track stays time-aligned with the rest of the session (host PDC assumes it).
+        const int lat = getLatencySamples();
+        if (lat > 0)
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                auto* d = mainBus.getWritePointer (ch);
+                for (int n = 0; n < numSamples; ++n)
+                {
+                    bypassDelay.pushSample (ch, d[n]);
+                    d[n] = bypassDelay.popSample (ch, (float) lat);
+                }
+            }
+
         gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
         mixSmoothed.setCurrentAndTargetValue (mixParam->load());
         grMeterDb.store (0.0f);
-        outLevelDb.store (inLevelDb.load());
+        outLevelDb.store (blockPeakDb (mainBus, numCh, numSamples));
         return;
     }
 

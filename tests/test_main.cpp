@@ -300,3 +300,27 @@ TEST_CASE ("Processor: parallel mix stays phase-aligned with oversampling on", "
     // Without the alignment fix the 50/50 sum combs and this drops well below.
     REQUIRE (approxEq (outRms, inRms, inRms * 0.1f));
 }
+
+TEST_CASE ("Processor: bypass is latency-compensated", "[processor][phase9]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::lookahead, 2.0f); // 2 ms reported latency
+    proc.apvts.getParameter (gf::params::id::bypass)->setValueNotifyingHost (1.0f); // bypass on
+    proc.prepareToPlay (48000.0, 512);
+
+    const int L = (int) std::lround (2.0 * 48000.0 / 1000.0); // 96 samples
+    REQUIRE (proc.getLatencySamples() == L);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    buffer.clear();
+    buffer.setSample (0, 0, 1.0f);
+    buffer.setSample (1, 0, 1.0f);
+    proc.processBlock (buffer, midi);
+
+    // Even bypassed, the signal must be delayed by the reported latency.
+    REQUIRE (std::abs (buffer.getSample (0, 0)) < 0.01f);
+    REQUIRE (std::abs (buffer.getSample (0, L)) > 0.9f);
+}
