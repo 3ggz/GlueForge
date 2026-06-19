@@ -352,6 +352,23 @@ TEST_CASE ("Processor: state round-trips with many parameters set", "[state][pha
                            b.apvts.getRawParameterValue (pid)->load(), 0.01f));
 }
 
+TEST_CASE ("Processor: pump shape survives state save/restore", "[state][shape]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor a;
+    a.setDuckShapeString ("0.0:0.2 0.25:0.9 0.6:0.3 1.0:1.0"); // non-default shape (state-tree property)
+    const auto saved = a.getDuckShapeString();
+    REQUIRE (saved.isNotEmpty());
+
+    juce::MemoryBlock blob;
+    a.getStateInformation (blob);
+    GlueForgeProcessor b;
+    b.setStateInformation (blob.getData(), (int) blob.getSize());
+
+    REQUIRE (b.getDuckShapeString() == saved); // the shape is not a parameter, so this is the only guard
+}
+
 TEST_CASE ("Processor: SC-listen outputs the detection signal, not the compressed output", "[processor][phase9]")
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
