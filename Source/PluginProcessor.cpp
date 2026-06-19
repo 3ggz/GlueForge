@@ -131,8 +131,8 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     cpValid = false; // force coefficient recompute for the new sample rate on next block
 
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, (juce::uint32) numOut };
-    lookaheadDelay.prepare (spec);
-    lookaheadDelay.reset();
+    lookaheadDelay.prepare (spec); lookaheadDelay.reset();
+    dryDelay.prepare (spec);       dryDelay.reset();
 
     for (int i = 0; i < 3; ++i) // 2x / 4x / 8x
     {
@@ -333,7 +333,7 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             multiband.setCrossovers (mbXLowParam->load(), mbXHighParam->load());
             for (int b = 0; b < 3; ++b)
                 multiband.setBand (b, mbTrimParam[b]->load(), mbBypassParam[b]->load() >= 0.5f);
-            multiband.setSolo ((int) mbSoloParam->load() - 1); // 0 None -> -1
+            multiband.setSolo (juce::jlimit (-1, 2, (int) mbSoloParam->load() - 1)); // 0 None -> -1
             multiband.process (mainBus, detectionBuffer);
             grMeterDb.store (multiband.getGainReductionDb());
         }
@@ -363,6 +363,23 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     else
     {
         saturator.process (mainBus);
+    }
+
+    // Phase-align the dry path with the oversampler latency added to the wet path,
+    // so the parallel mix doesn't comb-filter when OS is on and mix < 1.
+    if (osIdx > 0 && oversamplers[(size_t) (osIdx - 1)] != nullptr)
+    {
+        const int osLat = (int) oversamplers[(size_t) (osIdx - 1)]->getLatencyInSamples();
+        if (osLat > 0)
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                auto* dch = dryBuffer.getWritePointer (ch);
+                for (int n = 0; n < numSamples; ++n)
+                {
+                    dryDelay.pushSample (ch, dch[n]);
+                    dch[n] = dryDelay.popSample (ch, (float) osLat);
+                }
+            }
     }
 
     // 2) Parallel mix (wet/dry) + output gain in one smoothed per-sample pass.

@@ -107,6 +107,7 @@ private:
 
     // Lookahead delay + oversampling (both contribute reported latency / PDC).
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> lookaheadDelay { 8192 };
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> dryDelay { 8192 }; // matches OS latency
     std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers; // 2x / 4x / 8x
     double currentSr = 44100.0;
 

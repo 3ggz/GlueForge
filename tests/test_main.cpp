@@ -268,3 +268,35 @@ TEST_CASE ("Processor: mid/side mode changes the detection domain", "[processor]
     // In M/S, M=S=0.25 (-12 dB) < -9 dB -> no compression; L reconstructs to ~0.5.
     REQUIRE (outL (true) > 0.48f);
 }
+
+TEST_CASE ("Processor: parallel mix stays phase-aligned with oversampling on", "[processor][phase9]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::ratio, 1.0f);        // transparent compressor
+    setParamDb (proc, gf::params::id::mix, 0.5f);          // 50% parallel
+    setParamDb (proc, gf::params::id::oversampling, 2.0f); // 4x (adds wet-path latency)
+    proc.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buf (2, 512);
+    juce::MidiBuffer midi;
+    const double sr = 48000.0;
+    double inAcc = 0.0, outAcc = 0.0; int counted = 0;
+    for (int b = 0; b < 60; ++b)
+    {
+        for (int i = 0; i < 512; ++i)
+        {
+            const float x = (float) std::sin (2.0 * juce::MathConstants<double>::pi * 1000.0 * (b * 512 + i) / sr);
+            buf.setSample (0, i, x); buf.setSample (1, i, x);
+        }
+        if (b >= 40) for (int i = 0; i < 512; ++i) inAcc += (double) buf.getSample (0, i) * buf.getSample (0, i);
+        proc.processBlock (buf, midi);
+        if (b >= 40) for (int i = 0; i < 512; ++i) { const float y = buf.getSample (0, i); outAcc += (double) y * y; ++counted; }
+    }
+    const float inRms  = (float) std::sqrt (inAcc  / juce::jmax (1, counted));
+    const float outRms = (float) std::sqrt (outAcc / juce::jmax (1, counted));
+    // Dry delayed to match the wet's oversampler latency -> reconstructs ~unity.
+    // Without the alignment fix the 50/50 sum combs and this drops well below.
+    REQUIRE (approxEq (outRms, inRms, inRms * 0.1f));
+}
