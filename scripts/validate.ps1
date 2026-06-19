@@ -17,8 +17,16 @@ if (-not (Test-Path $pv)) {
 $vst3 = Get-ChildItem -Path (Join-Path $root 'build') -Recurse -Filter 'GlueForge.vst3' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $vst3) { throw "GlueForge.vst3 not found under build/. Build first." }
 
+$logOut = Join-Path $tools 'pluginval-stdout.log'
+$logErr = Join-Path $tools 'pluginval-stderr.log'
+
 Write-Host "Validating $($vst3.FullName) at strictness 10..."
-& $pv --strictness-level 10 --timeout-ms 600000 --validate "$($vst3.FullName)"
-$code = $LASTEXITCODE
-if ($code -ne 0) { throw "pluginval FAILED (exit $code)." }
+# pluginval detaches from the console, so `&` loses its output and exit code.
+# Start-Process -Wait -PassThru with redirected output captures both reliably.
+$p = Start-Process -FilePath $pv `
+    -ArgumentList '--strictness-level','10','--validate-in-process','--timeout-ms','600000','--validate',"`"$($vst3.FullName)`"" `
+    -NoNewWindow -Wait -PassThru -RedirectStandardOutput $logOut -RedirectStandardError $logErr
+
+Get-Content $logOut
+if ($p.ExitCode -ne 0) { throw "pluginval FAILED (exit $($p.ExitCode)). See $logOut" }
 Write-Host "`npluginval PASSED (strictness 10)."
