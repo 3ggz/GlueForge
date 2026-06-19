@@ -18,6 +18,14 @@ namespace gf::dsp
         float holdMs         = 0.0f;
         float makeupDb       = 0.0f;
         float detectorBlend  = 0.0f;  // 0 = peak, 1 = RMS
+
+        bool operator== (const CompressorParameters& o) const
+        {
+            return thresholdDb == o.thresholdDb && ratio == o.ratio && kneeDb == o.kneeDb
+                && attackMs == o.attackMs && releaseMs == o.releaseMs && holdMs == o.holdMs
+                && makeupDb == o.makeupDb && detectorBlend == o.detectorBlend;
+        }
+        bool operator!= (const CompressorParameters& o) const { return ! (*this == o); }
     };
 
     /**

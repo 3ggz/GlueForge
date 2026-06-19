@@ -30,6 +30,7 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
 
     compressor.prepare (sampleRate, juce::jmax (1, getMainBusNumOutputChannels()));
+    cpValid = false; // force coefficient recompute for the new sample rate on next block
 
     // No lookahead/oversampling yet — but the PDC hook is live from day one.
     setLatencySamples (0);
@@ -87,7 +88,12 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     cp.holdMs        = holdParam->load();
     cp.makeupDb      = makeupParam->load();
     cp.detectorBlend = detectorParam->load();
-    compressor.setParameters (cp);
+    if (! cpValid || cp != lastCp)        // only recompute coefficients when something changed
+    {
+        compressor.setParameters (cp);
+        lastCp  = cp;
+        cpValid = true;
+    }
     compressor.process (mainBus);
     grMeterDb.store (compressor.getGainReductionDb());
 

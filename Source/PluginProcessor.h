@@ -66,6 +66,8 @@ private:
     juce::AudioParameterBool* bypassParam = nullptr;
 
     gf::dsp::Compressor compressor;
+    gf::dsp::CompressorParameters lastCp;               // last applied params (change detection)
+    bool cpValid = false;
     juce::LinearSmoothedValue<float> gainSmoothed;      // output gain (linear), smoothed
     std::atomic<float> grMeterDb { 0.0f };
 
