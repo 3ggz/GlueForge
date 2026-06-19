@@ -1,46 +1,307 @@
 #include "PluginEditor.h"
 #include "ParamIDs.h"
 
+using namespace gf;
+
 GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     : juce::AudioProcessorEditor (&p), proc (p)
 {
-    gainSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    gainSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 90, 22);
-    addAndMakeVisible (gainSlider);
+    setLookAndFeel (&lnf);
 
-    gainLabel.setText ("Gain", juce::dontSendNotification);
-    gainLabel.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (gainLabel);
+    // --- Displays ---
+    addAndMakeVisible (inMeter);
+    addAndMakeVisible (grMeter);
+    addAndMakeVisible (outMeter);
+    addAndMakeVisible (curve);
+    addAndMakeVisible (history);
+    for (auto* l : { &inLbl, &grLbl, &outLbl })
+    {
+        l->setJustificationType (juce::Justification::centred);
+        l->setFont (juce::FontOptions (10.0f));
+        l->setColour (juce::Label::textColourId, ui::colours::dim);
+        addAndMakeVisible (*l);
+    }
 
-    gainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        proc.apvts, gf::params::id::gain, gainSlider);
+    // --- Top bar ---
+    presets = ui::factoryPresets();
+    rebuildPresetMenu();
+    presetBox.onChange = [this]
+    {
+        const int idx = presetBox.getSelectedId() - 1;
+        if (juce::isPositiveAndBelow (idx, (int) presets.size()))
+            ui::applyPreset (proc.apvts, presets[(size_t) idx]);
+    };
+    addAndMakeVisible (presetBox);
 
-    setSize (360, 320);
+    prevBtn.onClick = [this] { presetBox.setSelectedId (juce::jmax (1, presetBox.getSelectedId() - 1)); };
+    nextBtn.onClick = [this] { presetBox.setSelectedId (juce::jmin ((int) presets.size(), presetBox.getSelectedId() + 1)); };
+    saveBtn.onClick = [this] { savePresetToFile(); };
+    loadBtn.onClick = [this] { loadPresetFromFile(); };
+    for (auto* b : { &prevBtn, &nextBtn, &saveBtn, &loadBtn }) addAndMakeVisible (*b);
+
+    // A/B compare
+    stateA = proc.apvts.copyState();
+    stateB = proc.apvts.copyState();
+    aBtn.setClickingTogglesState (true); bBtn.setClickingTogglesState (true);
+    aBtn.setToggleState (true, juce::dontSendNotification);
+    aBtn.setRadioGroupId (100); bBtn.setRadioGroupId (100);
+    auto storeCurrentInto = [this] (juce::ValueTree& dest) { dest = proc.apvts.copyState(); };
+    auto recall = [this] (const juce::ValueTree& src)
+    {
+        if (src.isValid()) proc.apvts.replaceState (src.createCopy());
+    };
+    aBtn.onClick = [this, storeCurrentInto, recall]
+    {
+        if (! showingA) { storeCurrentInto (stateB); showingA = true; recall (stateA); }
+    };
+    bBtn.onClick = [this, storeCurrentInto, recall]
+    {
+        if (showingA) { storeCurrentInto (stateA); showingA = false; recall (stateB); }
+    };
+    copyBtn.onClick = [this] { (showingA ? stateB : stateA) = proc.apvts.copyState(); };
+    for (auto* b : { &aBtn, &bBtn, &copyBtn }) addAndMakeVisible (*b);
+
+    bypassBtn.setButtonText ("Bypass");
+    bypassAtt = std::make_unique<ButtonAtt> (proc.apvts, params::id::bypass, bypassBtn);
+    addAndMakeVisible (bypassBtn);
+
+    // --- Controls ---
+    addRotary (params::id::threshold, "Thresh");
+    addRotary (params::id::ratio,     "Ratio");
+    addRotary (params::id::knee,      "Knee");
+    addRotary (params::id::attack,    "Attack");
+    addRotary (params::id::release,   "Release");
+    addRotary (params::id::hold,      "Hold");
+
+    addRotary (params::id::detector,  "Det P/R");
+    addRotary (params::id::range,     "Range");
+    addRotary (params::id::link,      "Link");
+    addRotary (params::id::makeup,    "Makeup");
+    addRotary (params::id::gain,      "Output");
+    addToggle (params::id::automakeup, "Auto");
+
+    addCombo  (params::id::trigger,   "Trigger");
+    addRotary (params::id::scHpf,     "SC HPF");
+    addRotary (params::id::scLpf,     "SC LPF");
+    addToggle (params::id::scListen,  "Listen");
+
+    addCombo  (params::id::duckRate,  "Duck Rate");
+    addRotary (params::id::duckDepth, "Depth");
+    addRotary (params::id::duckCurve, "Curve");
+    addCombo  (params::id::character, "Character");
+    addRotary (params::id::drive,     "Drive");
+    addRotary (params::id::satMix,    "Sat Mix");
+    addRotary (params::id::mix,       "Mix");
+
     setResizable (true, true);
-    setResizeLimits (280, 260, 900, 760);
+    setResizeLimits (820, 560, 1400, 1000);
+    setSize (900, 660);
+
+    startTimerHz (30);
 }
 
-void GlueForgeEditor::paint (juce::Graphics& g)
+GlueForgeEditor::~GlueForgeEditor()
 {
-    g.fillAll (juce::Colour (0xff1b1d23));
+    stopTimer();
+    setLookAndFeel (nullptr);
+}
 
-    g.setColour (juce::Colour (0xfff0f0f0));
-    g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
-    g.drawText ("GlueForge", getLocalBounds().removeFromTop (52),
-                juce::Justification::centred);
+void GlueForgeEditor::addRotary (const juce::String& id, const juce::String& name)
+{
+    auto r = std::make_unique<Rotary>();
+    r->s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    r->s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 62, 15);
+    addAndMakeVisible (r->s);
+    r->l.setText (name, juce::dontSendNotification);
+    r->l.setJustificationType (juce::Justification::centred);
+    r->l.setFont (juce::FontOptions (11.0f));
+    r->l.setColour (juce::Label::textColourId, ui::colours::dim);
+    addAndMakeVisible (r->l);
+    r->a = std::make_unique<SliderAtt> (proc.apvts, id, r->s);
+    rotaries[id] = std::move (r);
+}
 
-    g.setColour (juce::Colour (0xff6b7280));
-    g.setFont (juce::FontOptions (12.0f));
-    g.drawText ("v0.1 · Phase 1 skeleton",
-                getLocalBounds().removeFromBottom (24),
-                juce::Justification::centred);
+void GlueForgeEditor::addCombo (const juce::String& id, const juce::String& name)
+{
+    auto c = std::make_unique<Combo>();
+    if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (proc.apvts.getParameter (id)))
+    {
+        int i = 1;
+        for (auto& choice : cp->choices) c->c.addItem (choice, i++);
+    }
+    addAndMakeVisible (c->c);
+    c->l.setText (name, juce::dontSendNotification);
+    c->l.setJustificationType (juce::Justification::centred);
+    c->l.setFont (juce::FontOptions (11.0f));
+    c->l.setColour (juce::Label::textColourId, ui::colours::dim);
+    addAndMakeVisible (c->l);
+    c->a = std::make_unique<ComboAtt> (proc.apvts, id, c->c);
+    combos[id] = std::move (c);
+}
+
+void GlueForgeEditor::addToggle (const juce::String& id, const juce::String& name)
+{
+    auto t = std::make_unique<Toggle>();
+    t->b.setButtonText (name);
+    addAndMakeVisible (t->b);
+    t->a = std::make_unique<ButtonAtt> (proc.apvts, id, t->b);
+    toggles[id] = std::move (t);
+}
+
+void GlueForgeEditor::rebuildPresetMenu()
+{
+    presetBox.clear (juce::dontSendNotification);
+    juce::String lastCat;
+    for (int i = 0; i < (int) presets.size(); ++i)
+    {
+        if (presets[(size_t) i].category != lastCat)
+        {
+            lastCat = presets[(size_t) i].category;
+            presetBox.addSectionHeading (lastCat);
+        }
+        presetBox.addItem (presets[(size_t) i].name, i + 1);
+    }
+    presetBox.setSelectedId (1, juce::dontSendNotification);
+}
+
+void GlueForgeEditor::timerCallback()
+{
+    inMeter.setLevelDb  (proc.getInputLevelDb());   inMeter.repaint();
+    outMeter.setLevelDb (proc.getOutputLevelDb());  outMeter.repaint();
+    const float gr = proc.getCurrentGainReductionDb();
+    grMeter.setReductionDb (gr);                    grMeter.repaint();
+
+    auto raw = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+    curve.setParams (raw (params::id::threshold), raw (params::id::ratio), raw (params::id::knee));
+    curve.setOperatingPoint (proc.getInputLevelDb(), gr);
+    curve.repaint();
+
+    history.push (gr); history.repaint();
+}
+
+void GlueForgeEditor::layoutRow (juce::Rectangle<int> area, const juce::StringArray& ids)
+{
+    const int n = ids.size();
+    if (n == 0) return;
+    const int cellW = area.getWidth() / n;
+    for (auto& id : ids)
+    {
+        auto cell = area.removeFromLeft (cellW).reduced (4, 2);
+        if (auto it = rotaries.find (id); it != rotaries.end())
+        {
+            it->second->l.setBounds (cell.removeFromTop (15));
+            it->second->s.setBounds (cell);
+        }
+        else if (auto ci = combos.find (id); ci != combos.end())
+        {
+            ci->second->l.setBounds (cell.removeFromTop (15));
+            ci->second->c.setBounds (cell.removeFromTop (26));
+        }
+        else if (auto ti = toggles.find (id); ti != toggles.end())
+        {
+            ti->second->b.setBounds (cell.withSizeKeepingCentre (cell.getWidth(), 24));
+        }
+    }
 }
 
 void GlueForgeEditor::resized()
 {
-    auto r = getLocalBounds().reduced (24);
-    r.removeFromTop (52);
-    r.removeFromBottom (24);
-    gainLabel.setBounds (r.removeFromTop (24));
-    gainSlider.setBounds (r);
+    auto r = getLocalBounds().reduced (10);
+
+    // Top bar
+    auto top = r.removeFromTop (32);
+    bypassBtn.setBounds (top.removeFromRight (84));
+    top.removeFromRight (6);
+    copyBtn.setBounds (top.removeFromRight (40));
+    bBtn.setBounds (top.removeFromRight (30));
+    aBtn.setBounds (top.removeFromRight (30));
+    top.removeFromRight (8);
+    loadBtn.setBounds (top.removeFromRight (50));
+    saveBtn.setBounds (top.removeFromRight (50));
+    top.removeFromRight (8);
+    presetBox.setBounds (top.removeFromLeft (juce::jmin (260, top.getWidth() - 70)));
+    top.removeFromLeft (4);
+    prevBtn.setBounds (top.removeFromLeft (28));
+    top.removeFromLeft (2);
+    nextBtn.setBounds (top.removeFromLeft (28));
+
+    r.removeFromTop (10);
+
+    // Displays: meters | transfer curve | GR history
+    auto disp = r.removeFromTop (168);
+    auto meters = disp.removeFromLeft (104);
+    const int mw = (meters.getWidth() - 8) / 3;
+    auto placeMeter = [&] (juce::Component& m, juce::Label& lbl)
+    {
+        auto col = meters.removeFromLeft (mw);
+        lbl.setBounds (col.removeFromBottom (14));
+        m.setBounds (col.reduced (2));
+        meters.removeFromLeft (4);
+    };
+    placeMeter (inMeter, inLbl);
+    placeMeter (grMeter, grLbl);
+    placeMeter (outMeter, outLbl);
+
+    disp.removeFromLeft (8);
+    curve.setBounds (disp.removeFromLeft (disp.getWidth() / 2 - 4));
+    disp.removeFromLeft (8);
+    history.setBounds (disp);
+
+    r.removeFromTop (10);
+
+    // Control sections (4 equal rows)
+    const juce::StringArray row1 { params::id::threshold, params::id::ratio, params::id::knee,
+                                   params::id::attack, params::id::release, params::id::hold };
+    const juce::StringArray row2 { params::id::detector, params::id::range, params::id::link,
+                                   params::id::makeup, params::id::gain, params::id::automakeup };
+    const juce::StringArray row3 { params::id::trigger, params::id::scHpf, params::id::scLpf, params::id::scListen };
+    const juce::StringArray row4 { params::id::duckRate, params::id::duckDepth, params::id::duckCurve,
+                                   params::id::character, params::id::drive, params::id::satMix, params::id::mix };
+
+    const int rh = r.getHeight() / 4;
+    layoutRow (r.removeFromTop (rh), row1);
+    layoutRow (r.removeFromTop (rh), row2);
+    layoutRow (r.removeFromTop (rh), row3);
+    layoutRow (r, row4);
+}
+
+void GlueForgeEditor::paint (juce::Graphics& g)
+{
+    g.fillAll (ui::colours::bg);
+    g.setColour (ui::colours::accent);
+    g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
+    g.drawText ("GLUEFORGE", getLocalBounds().removeFromTop (32).withTrimmedLeft (0).removeFromRight (130),
+                juce::Justification::centredRight, false);
+}
+
+void GlueForgeEditor::savePresetToFile()
+{
+    auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                   .getChildFile ("GlueForge").getChildFile ("Presets");
+    dir.createDirectory();
+    chooser = std::make_unique<juce::FileChooser> ("Save GlueForge preset", dir, "*.xml");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
+        [this] (const juce::FileChooser& fc)
+        {
+            auto f = fc.getResult();
+            if (f == juce::File{}) return;
+            if (auto xml = proc.apvts.copyState().createXml())
+                xml->writeTo (f.withFileExtension ("xml"));
+        });
+}
+
+void GlueForgeEditor::loadPresetFromFile()
+{
+    auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                   .getChildFile ("GlueForge").getChildFile ("Presets");
+    chooser = std::make_unique<juce::FileChooser> ("Load GlueForge preset", dir, "*.xml");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this] (const juce::FileChooser& fc)
+        {
+            auto f = fc.getResult();
+            if (f == juce::File{} || ! f.existsAsFile()) return;
+            if (auto xml = juce::XmlDocument::parse (f))
+                if (xml->hasTagName (proc.apvts.state.getType()))
+                    proc.apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        });
 }

@@ -2,6 +2,17 @@
 #include "PluginEditor.h"
 #include "ParamIDs.h"
 
+namespace
+{
+    float blockPeakDb (const juce::AudioBuffer<float>& buf, int numCh, int numSamples)
+    {
+        float peak = 0.0f;
+        for (int ch = 0; ch < numCh; ++ch)
+            peak = juce::jmax (peak, buf.getMagnitude (ch, 0, numSamples));
+        return juce::Decibels::gainToDecibels (peak, -100.0f);
+    }
+}
+
 GlueForgeProcessor::GlueForgeProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",     juce::AudioChannelSet::stereo(), true)
@@ -95,6 +106,8 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     const int numCh      = mainBus.getNumChannels();
     const int numSamples = mainBus.getNumSamples();
 
+    inLevelDb.store (blockPeakDb (mainBus, numCh, numSamples));
+
     if (bypassParam->get())
     {
         // Bypassed: audio passes through untouched. Keep state in sync so
@@ -102,6 +115,7 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
         mixSmoothed.setCurrentAndTargetValue (mixParam->load());
         grMeterDb.store (0.0f);
+        outLevelDb.store (inLevelDb.load());
         return;
     }
 
@@ -160,6 +174,7 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                 w[ch][n] = d[ch][n] * og;
         }
         grMeterDb.store (0.0f);
+        outLevelDb.store (blockPeakDb (mainBus, numCh, numSamples));
         return;
     }
 
@@ -239,6 +254,8 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         for (int ch = 0; ch < numCh; ++ch)
             wet[ch][n] = (wet[ch][n] * m + dry[ch][n] * (1.0f - m)) * og;
     }
+
+    outLevelDb.store (blockPeakDb (mainBus, numCh, numSamples));
 }
 
 void GlueForgeProcessor::getStateInformation (juce::MemoryBlock& destData)

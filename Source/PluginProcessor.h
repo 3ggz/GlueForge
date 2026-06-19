@@ -50,8 +50,10 @@ public:
     // Lets the host provide click-free, latency-compensated bypass.
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypassParam; }
 
-    // Peak gain reduction (dB, <= 0) of the last processed block — for the GR meter.
+    // Metering snapshots of the last processed block (dB) — for the editor.
     float getCurrentGainReductionDb() const { return grMeterDb.load(); }
+    float getInputLevelDb()  const { return inLevelDb.load(); }
+    float getOutputLevelDb() const { return outLevelDb.load(); }
 
     juce::AudioProcessorValueTreeState apvts;
 
@@ -94,7 +96,9 @@ private:
     juce::AudioBuffer<float> dryBuffer;                 // dry copy for parallel (wet/dry) mix
     juce::LinearSmoothedValue<float> mixSmoothed;       // wet/dry, smoothed
     juce::LinearSmoothedValue<float> gainSmoothed;      // output gain (linear), smoothed
-    std::atomic<float> grMeterDb { 0.0f };
+    std::atomic<float> grMeterDb  { 0.0f };
+    std::atomic<float> inLevelDb  { -100.0f };
+    std::atomic<float> outLevelDb { -100.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlueForgeProcessor)
 };

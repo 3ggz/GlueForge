@@ -179,3 +179,25 @@ TEST_CASE ("Processor: tempo-duck mode modulates the level", "[processor][phase4
     REQUIRE (mx > 0.9f);
     REQUIRE (mn < 0.2f);
 }
+
+TEST_CASE ("Processor: input/output level meters track the signal", "[processor][phase6]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::ratio, 1.0f); // transparent
+    proc.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    for (int b = 0; b < 8; ++b)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (ch), 0.5f, 512);
+        proc.processBlock (buffer, midi);
+    }
+
+    const float expected = juce::Decibels::gainToDecibels (0.5f, -100.0f); // ~ -6.02 dB
+    REQUIRE (approxEq (proc.getInputLevelDb(),  expected, 0.3f));
+    REQUIRE (approxEq (proc.getOutputLevelDb(), expected, 0.3f)); // transparent path
+}
