@@ -6,6 +6,7 @@ juce_add_console_app(GlueForgeTests PRODUCT_NAME "GlueForgeTests")
 
 target_sources(GlueForgeTests PRIVATE
     test_main.cpp
+    test_dsp.cpp
     ${CMAKE_SOURCE_DIR}/Source/PluginProcessor.cpp
     ${CMAKE_SOURCE_DIR}/Source/PluginEditor.cpp)
 

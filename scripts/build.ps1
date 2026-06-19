@@ -49,11 +49,17 @@ Write-Host "vs:      $vs"
 Write-Host "config:  $config`n"
 
 # Run inside an MSVC environment by sourcing vcvars64 in a child cmd.
+#  - Put the VS Installer dir on PATH so vcvars64 can find vswhere.exe (else it
+#    prints a harmless-but-noisy "vswhere not recognized" line to stderr).
+#  - Merge each cmake invocation's stderr into stdout *inside the batch* so
+#    PowerShell never sees raw native stderr (which it wraps as a terminating
+#    NativeCommandError under -ErrorAction Stop).
 $bat = @"
 @echo off
-call "$vcvars" >nul || exit /b 1
-"$cmake" -S "$root" -B "$build" -G Ninja -DCMAKE_MAKE_PROGRAM="$ninjaFwd" -DCMAKE_BUILD_TYPE=$config || exit /b 1
-"$cmake" --build "$build" --parallel || exit /b 1
+set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
+call "$vcvars" >nul 2>nul || exit /b 1
+"$cmake" -S "$root" -B "$build" -G Ninja -DCMAKE_MAKE_PROGRAM="$ninjaFwd" -DCMAKE_BUILD_TYPE=$config 2>&1 || exit /b 1
+"$cmake" --build "$build" --parallel 2>&1 || exit /b 1
 "@
 $batFile = Join-Path $env:TEMP 'gf_build.bat'
 Set-Content -LiteralPath $batFile -Value $bat -Encoding Ascii

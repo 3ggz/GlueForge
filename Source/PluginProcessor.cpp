@@ -9,9 +9,17 @@ GlueForgeProcessor::GlueForgeProcessor()
                           .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)),
       apvts (*this, nullptr, "PARAMETERS", gf::params::createParameterLayout())
 {
-    gainParam   = apvts.getRawParameterValue (gf::params::id::gain);
-    bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
-    jassert (gainParam != nullptr && bypassParam != nullptr);
+    gainParam      = apvts.getRawParameterValue (gf::params::id::gain);
+    thresholdParam = apvts.getRawParameterValue (gf::params::id::threshold);
+    ratioParam     = apvts.getRawParameterValue (gf::params::id::ratio);
+    kneeParam      = apvts.getRawParameterValue (gf::params::id::knee);
+    attackParam    = apvts.getRawParameterValue (gf::params::id::attack);
+    releaseParam   = apvts.getRawParameterValue (gf::params::id::release);
+    holdParam      = apvts.getRawParameterValue (gf::params::id::hold);
+    makeupParam    = apvts.getRawParameterValue (gf::params::id::makeup);
+    detectorParam  = apvts.getRawParameterValue (gf::params::id::detector);
+    bypassParam    = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
+    jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr);
 }
 
 void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -20,6 +28,8 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     gainSmoothed.reset (sampleRate, 0.02); // 20 ms ramp — click-free
     gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
+
+    compressor.prepare (sampleRate, juce::jmax (1, getMainBusNumOutputChannels()));
 
     // No lookahead/oversampling yet — but the PDC hook is live from day one.
     setLatencySamples (0);
@@ -60,14 +70,29 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     if (bypassParam->get())
     {
-        // Bypassed: audio passes through untouched. Keep the smoother in sync so
+        // Bypassed: audio passes through untouched. Keep state in sync so
         // re-engaging does not jump.
         gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
+        grMeterDb.store (0.0f);
         return;
     }
 
-    gainSmoothed.setTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
+    // 1) Compression (detector -> static curve -> ballistics -> gain + makeup).
+    gf::dsp::CompressorParameters cp;
+    cp.thresholdDb   = thresholdParam->load();
+    cp.ratio         = ratioParam->load();
+    cp.kneeDb        = kneeParam->load();
+    cp.attackMs      = attackParam->load();
+    cp.releaseMs     = releaseParam->load();
+    cp.holdMs        = holdParam->load();
+    cp.makeupDb      = makeupParam->load();
+    cp.detectorBlend = detectorParam->load();
+    compressor.setParameters (cp);
+    compressor.process (mainBus);
+    grMeterDb.store (compressor.getGainReductionDb());
 
+    // 2) Output gain (post-compression trim), smoothed to stay click-free.
+    gainSmoothed.setTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
     for (int n = 0; n < numSamples; ++n)
     {
         const float g = gainSmoothed.getNextValue();

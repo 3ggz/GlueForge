@@ -5,6 +5,8 @@
 #include <juce_dsp/juce_dsp.h>
 #include <atomic>
 
+#include "dsp/Compressor.h"
+
 /**
     GlueForge — Phase 1 skeleton.
 
@@ -45,12 +47,27 @@ public:
     // Lets the host provide click-free, latency-compensated bypass.
     juce::AudioProcessorParameter* getBypassParameter() const override { return bypassParam; }
 
+    // Peak gain reduction (dB, <= 0) of the last processed block — for the GR meter.
+    float getCurrentGainReductionDb() const { return grMeterDb.load(); }
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
-    std::atomic<float>*        gainParam   = nullptr;   // dB
-    juce::AudioParameterBool*  bypassParam = nullptr;
-    juce::LinearSmoothedValue<float> gainSmoothed;      // linear gain, smoothed
+    // Cached raw parameter pointers (read on the audio thread).
+    std::atomic<float>* gainParam      = nullptr; // output gain, dB
+    std::atomic<float>* thresholdParam = nullptr;
+    std::atomic<float>* ratioParam     = nullptr;
+    std::atomic<float>* kneeParam       = nullptr;
+    std::atomic<float>* attackParam    = nullptr;
+    std::atomic<float>* releaseParam   = nullptr;
+    std::atomic<float>* holdParam      = nullptr;
+    std::atomic<float>* makeupParam    = nullptr;
+    std::atomic<float>* detectorParam  = nullptr;
+    juce::AudioParameterBool* bypassParam = nullptr;
+
+    gf::dsp::Compressor compressor;
+    juce::LinearSmoothedValue<float> gainSmoothed;      // output gain (linear), smoothed
+    std::atomic<float> grMeterDb { 0.0f };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlueForgeProcessor)
 };

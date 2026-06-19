@@ -30,6 +30,7 @@ TEST_CASE ("Gain parameter scales the signal by the expected linear factor", "[d
     constexpr float  inputVal  = 0.25f;
     constexpr float  gainDb    = 6.0f;
 
+    setParamDb (proc, gf::params::id::ratio, 1.0f); // 1:1 => no compression, isolate output gain
     setParamDb (proc, gf::params::id::gain, gainDb);
     proc.prepareToPlay (sr, blockSize);
 
@@ -100,4 +101,29 @@ TEST_CASE ("Reported latency is zero in Phase 1", "[latency][phase1]")
     GlueForgeProcessor proc;
     proc.prepareToPlay (44100.0, 128);
     REQUIRE (proc.getLatencySamples() == 0);
+}
+
+TEST_CASE ("Processor applies gain reduction when driven above threshold", "[processor][phase2]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::threshold, -40.0f);
+    setParamDb (proc, gf::params::id::ratio,     10.0f);
+    setParamDb (proc, gf::params::id::knee,      0.0f);
+    setParamDb (proc, gf::params::id::attack,    1.0f);
+    setParamDb (proc, gf::params::id::release,   50.0f);
+    proc.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    for (int b = 0; b < 40; ++b)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (ch), 0.5f, 512);
+        proc.processBlock (buffer, midi);
+    }
+
+    // 0.5 (-6 dBFS) vs threshold -40, ratio 10 -> deep, sustained reduction.
+    REQUIRE (proc.getCurrentGainReductionDb() < -10.0f);
 }
