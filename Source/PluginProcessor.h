@@ -63,11 +63,17 @@ private:
     std::atomic<float>* holdParam      = nullptr;
     std::atomic<float>* makeupParam    = nullptr;
     std::atomic<float>* detectorParam  = nullptr;
+    std::atomic<float>* mixParam       = nullptr;
+    std::atomic<float>* rangeParam     = nullptr;
+    std::atomic<float>* linkParam      = nullptr;
+    std::atomic<float>* autoMakeupParam = nullptr;
     juce::AudioParameterBool* bypassParam = nullptr;
 
     gf::dsp::Compressor compressor;
     gf::dsp::CompressorParameters lastCp;               // last applied params (change detection)
     bool cpValid = false;
+    juce::AudioBuffer<float> dryBuffer;                 // dry copy for parallel (wet/dry) mix
+    juce::LinearSmoothedValue<float> mixSmoothed;       // wet/dry, smoothed
     juce::LinearSmoothedValue<float> gainSmoothed;      // output gain (linear), smoothed
     std::atomic<float> grMeterDb { 0.0f };
 

@@ -186,3 +186,85 @@ TEST_CASE ("Compressor: gain reduction moves continuously under a sudden level j
     REQUIRE (maxStep < 1.0f);     // one-pole ballistics -> tiny per-sample change
     REQUIRE (gr.back() < -10.0f); // and it did clamp down hard
 }
+
+// ───────────────────────── Phase 3: range / auto-makeup / stereo link ─────────────────────────
+
+namespace
+{
+    void runConstant (Compressor& comp, float L, float R, int blocks = 40, int block = 512)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < block; ++i) { buf.setSample (0, i, L); buf.setSample (1, i, R); }
+            comp.process (buf);
+        }
+    }
+}
+
+TEST_CASE ("Compressor: range caps the maximum gain reduction", "[dsp][compressor][phase3]")
+{
+    Compressor comp; comp.prepare (48000.0, 2);
+    CompressorParameters p;
+    p.thresholdDb = -30.0f; p.ratio = 8.0f; p.kneeDb = 0.0f;
+    p.attackMs = 5.0f; p.releaseMs = 50.0f; p.rangeDb = 6.0f; // would be ~ -21 dB uncapped
+    comp.setParameters (p);
+
+    runConstant (comp, 0.5f, 0.5f, 30);
+    REQUIRE (approx (comp.getGainReductionDb(), -6.0f, 0.05f));
+}
+
+TEST_CASE ("Compressor: auto-makeup yields ~unity gain at 0 dBFS", "[dsp][compressor][phase3]")
+{
+    Compressor comp; comp.prepare (48000.0, 2);
+    CompressorParameters p;
+    p.thresholdDb = -18.0f; p.ratio = 4.0f; p.kneeDb = 0.0f;
+    p.attackMs = 5.0f; p.releaseMs = 50.0f; p.autoMakeup = true;
+    comp.setParameters (p);
+
+    juce::AudioBuffer<float> buf (2, 256);
+    for (int b = 0; b < 80; ++b)
+    {
+        for (int i = 0; i < 256; ++i) { buf.setSample (0, i, 1.0f); buf.setSample (1, i, 1.0f); }
+        comp.process (buf);
+    }
+    // 0 dBFS in; auto-makeup compensates the curve's reduction at 0 dBFS -> ~unity out
+    REQUIRE (approx (std::abs (buf.getSample (0, 255)), 1.0f, 0.02f));
+}
+
+TEST_CASE ("Compressor: unlinked detection compresses channels independently", "[dsp][compressor][phase3]")
+{
+    Compressor comp; comp.prepare (48000.0, 2);
+    CompressorParameters p;
+    p.thresholdDb = -20.0f; p.ratio = 8.0f; p.kneeDb = 0.0f;
+    p.attackMs = 2.0f; p.releaseMs = 50.0f; p.stereoLink = 0.0f;
+    comp.setParameters (p);
+
+    juce::AudioBuffer<float> buf (2, 512);
+    for (int b = 0; b < 40; ++b)
+    {
+        for (int i = 0; i < 512; ++i) { buf.setSample (0, i, 0.5f); buf.setSample (1, i, 0.001f); }
+        comp.process (buf);
+    }
+    // L (loud) reduced; R (well below threshold) essentially untouched
+    REQUIRE (std::abs (buf.getSample (0, 511)) < 0.5f);
+    REQUIRE (std::abs (buf.getSample (1, 511)) > 0.0009f);
+}
+
+TEST_CASE ("Compressor: full link applies the louder channel's reduction to both", "[dsp][compressor][phase3]")
+{
+    Compressor comp; comp.prepare (48000.0, 2);
+    CompressorParameters p;
+    p.thresholdDb = -20.0f; p.ratio = 8.0f; p.kneeDb = 0.0f;
+    p.attackMs = 2.0f; p.releaseMs = 50.0f; p.stereoLink = 1.0f;
+    comp.setParameters (p);
+
+    juce::AudioBuffer<float> buf (2, 512);
+    for (int b = 0; b < 40; ++b)
+    {
+        for (int i = 0; i < 512; ++i) { buf.setSample (0, i, 0.5f); buf.setSample (1, i, 0.001f); }
+        comp.process (buf);
+    }
+    // linked: R is pulled down by L's reduction, well below its 0.001 input
+    REQUIRE (std::abs (buf.getSample (1, 511)) < 0.0005f);
+}

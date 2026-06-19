@@ -127,3 +127,25 @@ TEST_CASE ("Processor applies gain reduction when driven above threshold", "[pro
     // 0.5 (-6 dBFS) vs threshold -40, ratio 10 -> deep, sustained reduction.
     REQUIRE (proc.getCurrentGainReductionDb() < -10.0f);
 }
+
+TEST_CASE ("Processor: parallel mix at 0% passes the dry signal", "[processor][phase3]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    GlueForgeProcessor proc;
+    setParamDb (proc, gf::params::id::threshold, -40.0f); // would compress hard...
+    setParamDb (proc, gf::params::id::ratio,     10.0f);
+    setParamDb (proc, gf::params::id::mix,        0.0f);  // ...but mix is fully dry
+    proc.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    for (int b = 0; b < 10; ++b)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (ch), 0.5f, 512);
+        proc.processBlock (buffer, midi);
+    }
+
+    REQUIRE (approxEq (buffer.getSample (0, 256), 0.5f, 1.0e-3f));
+}

@@ -20,6 +20,10 @@ namespace gf::params
         constexpr auto hold      = "hold";      // ms
         constexpr auto makeup    = "makeup";    // dB
         constexpr auto detector  = "detector";  // 0 = peak, 1 = RMS
+        constexpr auto mix       = "mix";        // wet/dry (parallel), 0..1
+        constexpr auto range     = "range";      // max gain reduction, dB
+        constexpr auto link      = "link";       // stereo link, 0..1
+        constexpr auto automakeup = "automakeup";
         constexpr auto gain      = "gain";      // output gain, dB
         constexpr auto bypass    = "bypass";
     }
@@ -61,9 +65,17 @@ namespace gf::params
                                  NormalisableRange<float> (-12.0f, 24.0f, 0.1f), 0.0f, "dB"));
         p.push_back (floatParam (id::detector, "Detector",
                                  NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.2f, ""));
+        p.push_back (floatParam (id::mix, "Mix",
+                                 NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f, ""));
+        p.push_back (floatParam (id::range, "Range",
+                                 NormalisableRange<float> (0.0f, 60.0f, 0.1f), 60.0f, "dB"));
+        p.push_back (floatParam (id::link, "Link",
+                                 NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f, ""));
         p.push_back (floatParam (id::gain, "Output",
                                  NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB"));
 
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::automakeup, 1 }, "Auto Makeup", false));
         p.push_back (std::make_unique<AudioParameterBool> (
             ParameterID { id::bypass, 1 }, "Bypass", false));
 

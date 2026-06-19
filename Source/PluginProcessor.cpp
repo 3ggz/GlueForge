@@ -16,20 +16,30 @@ GlueForgeProcessor::GlueForgeProcessor()
     attackParam    = apvts.getRawParameterValue (gf::params::id::attack);
     releaseParam   = apvts.getRawParameterValue (gf::params::id::release);
     holdParam      = apvts.getRawParameterValue (gf::params::id::hold);
-    makeupParam    = apvts.getRawParameterValue (gf::params::id::makeup);
-    detectorParam  = apvts.getRawParameterValue (gf::params::id::detector);
-    bypassParam    = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
-    jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr);
+    makeupParam     = apvts.getRawParameterValue (gf::params::id::makeup);
+    detectorParam   = apvts.getRawParameterValue (gf::params::id::detector);
+    mixParam        = apvts.getRawParameterValue (gf::params::id::mix);
+    rangeParam      = apvts.getRawParameterValue (gf::params::id::range);
+    linkParam       = apvts.getRawParameterValue (gf::params::id::link);
+    autoMakeupParam = apvts.getRawParameterValue (gf::params::id::automakeup);
+    bypassParam     = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
+    jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr
+             && mixParam != nullptr && rangeParam != nullptr && linkParam != nullptr);
 }
 
 void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    juce::ignoreUnused (samplesPerBlock);
+    const int numOut = juce::jmax (1, getMainBusNumOutputChannels());
 
     gainSmoothed.reset (sampleRate, 0.02); // 20 ms ramp — click-free
     gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
 
-    compressor.prepare (sampleRate, juce::jmax (1, getMainBusNumOutputChannels()));
+    mixSmoothed.reset (sampleRate, 0.02);
+    mixSmoothed.setCurrentAndTargetValue (mixParam->load());
+
+    dryBuffer.setSize (numOut, samplesPerBlock, false, false, true); // pre-allocate dry copy
+
+    compressor.prepare (sampleRate, numOut);
     cpValid = false; // force coefficient recompute for the new sample rate on next block
 
     // No lookahead/oversampling yet — but the PDC hook is live from day one.
@@ -74,11 +84,16 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         // Bypassed: audio passes through untouched. Keep state in sync so
         // re-engaging does not jump.
         gainSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
+        mixSmoothed.setCurrentAndTargetValue (mixParam->load());
         grMeterDb.store (0.0f);
         return;
     }
 
-    // 1) Compression (detector -> static curve -> ballistics -> gain + makeup).
+    // Keep a dry copy for the parallel (wet/dry) mix.
+    for (int ch = 0; ch < numCh; ++ch)
+        dryBuffer.copyFrom (ch, 0, mainBus.getReadPointer (ch), numSamples);
+
+    // 1) Compression (detector -> static curve -> range -> ballistics -> gain + makeup).
     gf::dsp::CompressorParameters cp;
     cp.thresholdDb   = thresholdParam->load();
     cp.ratio         = ratioParam->load();
@@ -88,6 +103,9 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     cp.holdMs        = holdParam->load();
     cp.makeupDb      = makeupParam->load();
     cp.detectorBlend = detectorParam->load();
+    cp.rangeDb       = rangeParam->load();
+    cp.stereoLink    = linkParam->load();
+    cp.autoMakeup    = autoMakeupParam->load() >= 0.5f;
     if (! cpValid || cp != lastCp)        // only recompute coefficients when something changed
     {
         compressor.setParameters (cp);
@@ -97,13 +115,18 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     compressor.process (mainBus);
     grMeterDb.store (compressor.getGainReductionDb());
 
-    // 2) Output gain (post-compression trim), smoothed to stay click-free.
+    // 2) Parallel mix (wet/dry) + output gain in one smoothed per-sample pass.
+    mixSmoothed.setTargetValue (mixParam->load());
     gainSmoothed.setTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
+
+    auto* const* wet = mainBus.getArrayOfWritePointers();
+    auto* const* dry = dryBuffer.getArrayOfReadPointers();
     for (int n = 0; n < numSamples; ++n)
     {
-        const float g = gainSmoothed.getNextValue();
+        const float m  = mixSmoothed.getNextValue();
+        const float og = gainSmoothed.getNextValue();
         for (int ch = 0; ch < numCh; ++ch)
-            mainBus.getWritePointer (ch)[n] *= g;
+            wet[ch][n] = (wet[ch][n] * m + dry[ch][n] * (1.0f - m)) * og;
     }
 }
 
