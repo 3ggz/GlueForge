@@ -26,5 +26,7 @@ target_link_libraries(GlueForgeTests PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags)
 
-include(Catch)
-catch_discover_tests(GlueForgeTests)
+# Register the whole suite as a single ctest entry (the executable returns
+# non-zero on any failure). This avoids catch_discover_tests mis-parsing test
+# names that contain ';', '[', ',', ')' etc.
+add_test(NAME GlueForgeTests COMMAND GlueForgeTests)
