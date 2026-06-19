@@ -39,6 +39,17 @@ namespace gf::params
         constexpr auto satMix    = "satmix";     // saturation wet/dry, 0..1
         constexpr auto lookahead = "lookahead";  // ms
         constexpr auto oversampling = "oversampling"; // Off / 2x / 4x / 8x
+        constexpr auto midside   = "midside";    // process Mid/Side instead of L/R
+        constexpr auto mbEnable  = "mbenable";   // multiband on/off
+        constexpr auto mbXLow    = "mbxlow";     // low|mid crossover, Hz
+        constexpr auto mbXHigh   = "mbxhigh";    // mid|high crossover, Hz
+        constexpr auto mbTrim1   = "mbtrim1";    // per-band output trim, dB
+        constexpr auto mbTrim2   = "mbtrim2";
+        constexpr auto mbTrim3   = "mbtrim3";
+        constexpr auto mbBypass1 = "mbbypass1";  // per-band compression bypass
+        constexpr auto mbBypass2 = "mbbypass2";
+        constexpr auto mbBypass3 = "mbbypass3";
+        constexpr auto mbSolo    = "mbsolo";     // None / Low / Mid / High
         constexpr auto gain      = "gain";      // output gain, dB
         constexpr auto bypass    = "bypass";
     }
@@ -121,6 +132,15 @@ namespace gf::params
             ParameterID { id::oversampling, 1 }, "Oversampling",
             StringArray { "Off", "2x", "4x", "8x" }, 0));
 
+        // Mid/Side + Multiband
+        p.push_back (floatParam (id::mbXLow,  "X Low",  skewed (30.0f, 1000.0f, 1.0f, 200.0f), 200.0f, "Hz"));
+        p.push_back (floatParam (id::mbXHigh, "X High", skewed (1000.0f, 16000.0f, 1.0f, 2500.0f), 2500.0f, "Hz"));
+        p.push_back (floatParam (id::mbTrim1, "Low Trim",  NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f, "dB"));
+        p.push_back (floatParam (id::mbTrim2, "Mid Trim",  NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f, "dB"));
+        p.push_back (floatParam (id::mbTrim3, "High Trim", NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f, "dB"));
+        p.push_back (std::make_unique<AudioParameterChoice> (
+            ParameterID { id::mbSolo, 1 }, "Solo", StringArray { "None", "Low", "Mid", "High" }, 0));
+
         p.push_back (floatParam (id::gain, "Output",
                                  NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB"));
 
@@ -130,6 +150,16 @@ namespace gf::params
             ParameterID { id::scListen, 1 }, "SC Listen", false));
         p.push_back (std::make_unique<AudioParameterBool> (
             ParameterID { id::syncRelease, 1 }, "Sync Release", false));
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::midside, 1 }, "Mid/Side", false));
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::mbEnable, 1 }, "Multiband", false));
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::mbBypass1, 1 }, "Low Byp", false));
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::mbBypass2, 1 }, "Mid Byp", false));
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::mbBypass3, 1 }, "High Byp", false));
         p.push_back (std::make_unique<AudioParameterBool> (
             ParameterID { id::bypass, 1 }, "Bypass", false));
 

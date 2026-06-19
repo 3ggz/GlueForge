@@ -11,6 +11,20 @@ namespace
             peak = juce::jmax (peak, buf.getMagnitude (ch, 0, numSamples));
         return juce::Decibels::gainToDecibels (peak, -100.0f);
     }
+
+    // In-place L/R <-> M/S (round-trips exactly). Stereo only.
+    void msEncode (juce::AudioBuffer<float>& buf, int numCh, int n)
+    {
+        if (numCh < 2) return;
+        auto* l = buf.getWritePointer (0); auto* r = buf.getWritePointer (1);
+        for (int i = 0; i < n; ++i) { const float L = l[i], R = r[i]; l[i] = 0.5f * (L + R); r[i] = 0.5f * (L - R); }
+    }
+    void msDecode (juce::AudioBuffer<float>& buf, int numCh, int n)
+    {
+        if (numCh < 2) return;
+        auto* m = buf.getWritePointer (0); auto* s = buf.getWritePointer (1);
+        for (int i = 0; i < n; ++i) { const float M = m[i], S = s[i]; m[i] = M + S; s[i] = M - S; }
+    }
 }
 
 GlueForgeProcessor::GlueForgeProcessor()
@@ -47,6 +61,17 @@ GlueForgeProcessor::GlueForgeProcessor()
     satMixParam     = apvts.getRawParameterValue (gf::params::id::satMix);
     lookaheadParam    = apvts.getRawParameterValue (gf::params::id::lookahead);
     oversamplingParam = apvts.getRawParameterValue (gf::params::id::oversampling);
+    midsideParam   = apvts.getRawParameterValue (gf::params::id::midside);
+    mbEnableParam  = apvts.getRawParameterValue (gf::params::id::mbEnable);
+    mbXLowParam    = apvts.getRawParameterValue (gf::params::id::mbXLow);
+    mbXHighParam   = apvts.getRawParameterValue (gf::params::id::mbXHigh);
+    mbTrimParam[0] = apvts.getRawParameterValue (gf::params::id::mbTrim1);
+    mbTrimParam[1] = apvts.getRawParameterValue (gf::params::id::mbTrim2);
+    mbTrimParam[2] = apvts.getRawParameterValue (gf::params::id::mbTrim3);
+    mbBypassParam[0] = apvts.getRawParameterValue (gf::params::id::mbBypass1);
+    mbBypassParam[1] = apvts.getRawParameterValue (gf::params::id::mbBypass2);
+    mbBypassParam[2] = apvts.getRawParameterValue (gf::params::id::mbBypass3);
+    mbSoloParam    = apvts.getRawParameterValue (gf::params::id::mbSolo);
     bypassParam     = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
     jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr
              && mixParam != nullptr && rangeParam != nullptr && linkParam != nullptr);
@@ -102,6 +127,7 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     ducker.prepare (sampleRate);
     saturator.prepare (sampleRate, numOut);
     compressor.prepare (sampleRate, numOut);
+    multiband.prepare (sampleRate, numOut, samplesPerBlock);
     cpValid = false; // force coefficient recompute for the new sample rate on next block
 
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, (juce::uint32) numOut };
@@ -243,6 +269,14 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (int ch = 0; ch < numCh; ++ch)
         dryBuffer.copyFrom (ch, 0, mainBus.getReadPointer (ch), numSamples);
 
+    // Mid/Side: compress in the M/S domain (stereo only). Dry stays L/R.
+    const bool midSide = midsideParam->load() >= 0.5f && numCh >= 2;
+    if (midSide)
+    {
+        msEncode (mainBus, numCh, numSamples);
+        msEncode (detectionBuffer, numCh, numSamples);
+    }
+
     const auto charModel = (gf::dsp::CharacterModel) juce::jlimit (0, 2, (int) characterParam->load());
 
     // 1) Wet generation: tempo-synced volume-shaper duck, or the compressor.
@@ -289,12 +323,29 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         if (! cpValid || cp != lastCp)    // only recompute coefficients when something changed
         {
             compressor.setParameters (cp);
+            multiband.setCompressorParams (cp);
             lastCp  = cp;
             cpValid = true;
         }
-        compressor.process (mainBus, &detectionBuffer);
-        grMeterDb.store (compressor.getGainReductionDb());
+
+        if (mbEnableParam->load() >= 0.5f)
+        {
+            multiband.setCrossovers (mbXLowParam->load(), mbXHighParam->load());
+            for (int b = 0; b < 3; ++b)
+                multiband.setBand (b, mbTrimParam[b]->load(), mbBypassParam[b]->load() >= 0.5f);
+            multiband.setSolo ((int) mbSoloParam->load() - 1); // 0 None -> -1
+            multiband.process (mainBus, detectionBuffer);
+            grMeterDb.store (multiband.getGainReductionDb());
+        }
+        else
+        {
+            compressor.process (mainBus, &detectionBuffer);
+            grMeterDb.store (compressor.getGainReductionDb());
+        }
     }
+
+    if (midSide)
+        msDecode (mainBus, numCh, numSamples); // back to L/R
 
     // Character saturation colours the wet signal — oversampled (around the
     // nonlinearity) when enabled, to keep the harmonics from aliasing.

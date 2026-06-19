@@ -234,3 +234,37 @@ TEST_CASE ("Processor: oversampling adds reported latency", "[processor][phase7]
     proc.prepareToPlay (48000.0, 512);
     REQUIRE (proc.getLatencySamples() > 0);                // FIR oversampler latency
 }
+
+TEST_CASE ("Processor: mid/side mode changes the detection domain", "[processor][phase8]")
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    auto outL = [] (bool ms) -> float
+    {
+        GlueForgeProcessor proc;
+        setParamDb (proc, gf::params::id::threshold, -9.0f);
+        setParamDb (proc, gf::params::id::ratio,      8.0f);
+        setParamDb (proc, gf::params::id::knee,       0.0f);
+        setParamDb (proc, gf::params::id::link,       0.0f); // unlinked
+        setParamDb (proc, gf::params::id::attack,     1.0f);
+        setParamDb (proc, gf::params::id::release,    50.0f);
+        setParamDb (proc, gf::params::id::midside, ms ? 1.0f : 0.0f);
+        proc.prepareToPlay (48000.0, 512);
+
+        juce::AudioBuffer<float> buf (2, 512);
+        juce::MidiBuffer midi;
+        float last = 0.0f;
+        for (int b = 0; b < 60; ++b)
+        {
+            for (int i = 0; i < 512; ++i) { buf.setSample (0, i, 0.5f); buf.setSample (1, i, 0.0f); }
+            proc.processBlock (buf, midi);
+            last = std::abs (buf.getSample (0, 511));
+        }
+        return last;
+    };
+
+    // L=0.5 (-6 dB) > -9 dB -> compressed in L/R mode.
+    REQUIRE (outL (false) < 0.45f);
+    // In M/S, M=S=0.25 (-12 dB) < -9 dB -> no compression; L reconstructs to ~0.5.
+    REQUIRE (outL (true) > 0.48f);
+}

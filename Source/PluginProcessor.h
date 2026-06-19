@@ -10,6 +10,7 @@
 #include "dsp/SidechainFilter.h"
 #include "dsp/TempoDucker.h"
 #include "dsp/Saturator.h"
+#include "dsp/Multiband.h"
 
 /**
     GlueForge — Phase 1 skeleton.
@@ -89,12 +90,20 @@ private:
     std::atomic<float>* satMixParam    = nullptr;
     std::atomic<float>* lookaheadParam = nullptr;
     std::atomic<float>* oversamplingParam = nullptr;
+    std::atomic<float>* midsideParam   = nullptr;
+    std::atomic<float>* mbEnableParam  = nullptr;
+    std::atomic<float>* mbXLowParam    = nullptr;
+    std::atomic<float>* mbXHighParam   = nullptr;
+    std::atomic<float>* mbTrimParam[3]   = { nullptr, nullptr, nullptr };
+    std::atomic<float>* mbBypassParam[3] = { nullptr, nullptr, nullptr };
+    std::atomic<float>* mbSoloParam    = nullptr;
     juce::AudioParameterBool* bypassParam = nullptr;
 
     gf::dsp::Compressor compressor;
     gf::dsp::SidechainFilter scFilter;                  // detector-path HP/LP
     gf::dsp::TempoDucker ducker;                        // tempo-synced volume shaper
     gf::dsp::Saturator saturator;                       // character coloration
+    gf::dsp::Multiband multiband;                       // 3-band LR4 multiband
 
     // Lookahead delay + oversampling (both contribute reported latency / PDC).
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> lookaheadDelay { 8192 };

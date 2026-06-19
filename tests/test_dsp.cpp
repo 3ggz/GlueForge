@@ -10,6 +10,7 @@
 #include "dsp/TempoDucker.h"
 #include "dsp/TempoSync.h"
 #include "dsp/Saturator.h"
+#include "dsp/Multiband.h"
 
 #include <cmath>
 #include <vector>
@@ -402,4 +403,55 @@ TEST_CASE ("Character: FET is snappier and Opto smoother than VCA", "[dsp][chara
     REQUIRE (characterAttackScale (CharacterModel::FET) < characterAttackScale (CharacterModel::VCA));
     REQUIRE (characterAttackScale (CharacterModel::VCA) < characterAttackScale (CharacterModel::Opto));
     REQUIRE (characterReleaseScale (CharacterModel::FET) < characterReleaseScale (CharacterModel::Opto));
+}
+
+// ───────────────────────── Phase 8: multiband ─────────────────────────
+
+namespace
+{
+    // Runs `mb` over a continuous sine and returns steady-state output RMS (mono).
+    float multibandOutRms (Multiband& mb, float freq, double sr = 48000.0, int blocks = 60)
+    {
+        juce::AudioBuffer<float> main (1, 512), det (1, 512);
+        double acc = 0.0; int counted = 0;
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < 512; ++i)
+            {
+                const float x = (float) std::sin (2.0 * juce::MathConstants<double>::pi * freq * (b * 512 + i) / sr);
+                main.setSample (0, i, x); det.setSample (0, i, x);
+            }
+            mb.process (main, det);
+            if (b >= blocks / 2)
+                for (int i = 0; i < 512; ++i) { const float y = main.getSample (0, i); acc += (double) y * y; ++counted; }
+        }
+        return (float) std::sqrt (acc / juce::jmax (1, counted));
+    }
+}
+
+TEST_CASE ("Multiband: reconstructs flat with no compression", "[dsp][multiband][phase8]")
+{
+    Multiband mb; mb.prepare (48000.0, 1, 512); mb.setCrossovers (200.0f, 2000.0f);
+    CompressorParameters p; p.ratio = 1.0f; // unity -> no gain change
+    mb.setCompressorParams (p);
+    for (int i = 0; i < 3; ++i) mb.setBand (i, 0.0f, false);
+    mb.setSolo (-1);
+
+    // A 1 kHz sine (RMS ~0.707) should survive the LR allpass sum nearly intact.
+    REQUIRE (approx (multibandOutRms (mb, 1000.0f), 0.707f, 0.07f));
+}
+
+TEST_CASE ("Multiband: solo isolates a band's frequency range", "[dsp][multiband][phase8]")
+{
+    CompressorParameters p; p.ratio = 1.0f;
+
+    Multiband hi; hi.prepare (48000.0, 1, 512); hi.setCrossovers (200.0f, 2000.0f);
+    hi.setCompressorParams (p); for (int i = 0; i < 3; ++i) hi.setBand (i, 0.0f, false);
+    hi.setSolo (2);                                  // solo HIGH band
+    REQUIRE (multibandOutRms (hi, 100.0f) < 0.1f);   // 100 Hz (low band) removed
+
+    Multiband lo; lo.prepare (48000.0, 1, 512); lo.setCrossovers (200.0f, 2000.0f);
+    lo.setCompressorParams (p); for (int i = 0; i < 3; ++i) lo.setBand (i, 0.0f, false);
+    lo.setSolo (0);                                  // solo LOW band
+    REQUIRE (multibandOutRms (lo, 100.0f) > 0.5f);   // 100 Hz passes
 }

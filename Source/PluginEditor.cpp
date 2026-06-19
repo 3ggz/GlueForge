@@ -95,9 +95,21 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     addRotary (params::id::lookahead, "Look");
     addCombo  (params::id::oversampling, "OS");
 
+    addToggle (params::id::midside,  "M/S");
+    addToggle (params::id::mbEnable, "MultiB");
+    addRotary (params::id::mbXLow,   "X Low");
+    addRotary (params::id::mbXHigh,  "X High");
+    addCombo  (params::id::mbSolo,   "Solo");
+    addRotary (params::id::mbTrim1,  "Low");
+    addToggle (params::id::mbBypass1, "Lo Byp");
+    addRotary (params::id::mbTrim2,  "Mid");
+    addToggle (params::id::mbBypass2, "Md Byp");
+    addRotary (params::id::mbTrim3,  "High");
+    addToggle (params::id::mbBypass3, "Hi Byp");
+
     setResizable (true, true);
-    setResizeLimits (820, 560, 1400, 1000);
-    setSize (900, 660);
+    setResizeLimits (860, 680, 1500, 1200);
+    setSize (940, 840);
 
     startTimerHz (30);
 }
@@ -260,13 +272,19 @@ void GlueForgeEditor::resized()
     const juce::StringArray row4 { params::id::duckRate, params::id::duckDepth, params::id::duckCurve,
                                    params::id::character, params::id::drive, params::id::satMix };
     const juce::StringArray row5 { params::id::mix, params::id::lookahead, params::id::oversampling };
+    const juce::StringArray row6 { params::id::midside, params::id::mbEnable, params::id::mbXLow,
+                                   params::id::mbXHigh, params::id::mbSolo };
+    const juce::StringArray row7 { params::id::mbTrim1, params::id::mbBypass1, params::id::mbTrim2,
+                                   params::id::mbBypass2, params::id::mbTrim3, params::id::mbBypass3 };
 
-    const int rh = r.getHeight() / 5;
+    const int rh = r.getHeight() / 7;
     layoutRow (r.removeFromTop (rh), row1);
     layoutRow (r.removeFromTop (rh), row2);
     layoutRow (r.removeFromTop (rh), row3);
     layoutRow (r.removeFromTop (rh), row4);
-    layoutRow (r, row5);
+    layoutRow (r.removeFromTop (rh), row5);
+    layoutRow (r.removeFromTop (rh), row6);
+    layoutRow (r, row7);
 }
 
 void GlueForgeEditor::paint (juce::Graphics& g)
