@@ -117,17 +117,18 @@ namespace gf::ui
             auto b = getLocalBounds().toFloat().reduced (1.0f);
             g.setColour (colours::panel); g.fillRoundedRectangle (b, 3.0f);
 
+            // Gain reduction grows downward from the top (0 dB = top edge, no fill).
             const int N = (int) hist_.size();
-            juce::Path p; p.startNewSubPath (b.getX(), b.getBottom());
+            juce::Path p; p.startNewSubPath (b.getX(), b.getY());
             for (int i = 0; i < N; ++i)
             {
                 const float mag = hist_[(size_t) ((head_ + i) % N)];
                 const float x = juce::jmap ((float) i, 0.0f, (float) (N - 1), b.getX(), b.getRight());
-                const float y = juce::jmap (juce::jlimit (0.0f, 30.0f, mag), 0.0f, 30.0f, b.getY(), b.getBottom());
+                const float y = juce::jmap (juce::jlimit (0.0f, 36.0f, mag), 0.0f, 36.0f, b.getY(), b.getBottom());
                 p.lineTo (x, y);
             }
-            p.lineTo (b.getRight(), b.getBottom()); p.closeSubPath();
-            g.setColour (colours::accent2.withAlpha (0.35f));
+            p.lineTo (b.getRight(), b.getY()); p.closeSubPath();
+            g.setColour (colours::accent2.withAlpha (0.4f));
             g.fillPath (p);
         }
     private:

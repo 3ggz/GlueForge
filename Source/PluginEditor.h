@@ -4,6 +4,7 @@
 #include "ui/LookAndFeel.h"
 #include "ui/Components.h"
 #include "ui/Presets.h"
+#include "ui/ShapeEditor.h"
 
 #include <map>
 #include <memory>
@@ -53,6 +54,9 @@ private:
     juce::Label inLbl { {}, "IN" }, outLbl { {}, "OUT" }, grLbl { {}, "GR" };
     gf::ui::TransferCurveComponent curve;
     gf::ui::GrHistoryComponent     history;
+    gf::ui::ShapeEditor            shapeEditor;            // tempo-duck pump shape
+    juce::Label displayCaption { {}, "TRANSFER CURVE" };  // names the centre display
+    int lastTrigger = -1;                                 // for mode-aware display switching
 
     // Top bar
     juce::ComboBox  presetBox;
@@ -65,6 +69,8 @@ private:
     juce::ValueTree stateA, stateB;
     bool showingA = true;
     std::unique_ptr<juce::FileChooser> chooser;
+
+    std::vector<std::pair<juce::String, juce::Rectangle<int>>> rowHeaders; // section titles (drawn in paint)
 
     std::map<juce::String, std::unique_ptr<Rotary>> rotaries;
     std::map<juce::String, std::unique_ptr<Combo>>  combos;

@@ -4,7 +4,7 @@
 using namespace gf;
 
 GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
-    : juce::AudioProcessorEditor (&p), proc (p)
+    : juce::AudioProcessorEditor (&p), proc (p), shapeEditor (p)
 {
     setLookAndFeel (&lnf);
 
@@ -14,6 +14,12 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     addAndMakeVisible (outMeter);
     addAndMakeVisible (curve);
     addAndMakeVisible (history);
+    addAndMakeVisible (shapeEditor);
+    shapeEditor.setVisible (false); // shown only in Tempo Duck mode
+    displayCaption.setJustificationType (juce::Justification::centredLeft);
+    displayCaption.setFont (juce::FontOptions (10.0f));
+    displayCaption.setColour (juce::Label::textColourId, ui::colours::dim);
+    addAndMakeVisible (displayCaption);
     for (auto* l : { &inLbl, &grLbl, &outLbl })
     {
         l->setJustificationType (juce::Justification::centred);
@@ -29,7 +35,10 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     {
         const int idx = presetBox.getSelectedId() - 1;
         if (juce::isPositiveAndBelow (idx, (int) presets.size()))
+        {
             ui::applyPreset (proc.apvts, presets[(size_t) idx]);
+            proc.rebuildShapeLut(); // preset carries the pump shape
+        }
     };
     addAndMakeVisible (presetBox);
 
@@ -48,7 +57,7 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     auto storeCurrentInto = [this] (juce::ValueTree& dest) { dest = proc.apvts.copyState(); };
     auto recall = [this] (const juce::ValueTree& src)
     {
-        if (src.isValid()) proc.apvts.replaceState (src.createCopy());
+        if (src.isValid()) { proc.apvts.replaceState (src.createCopy()); proc.rebuildShapeLut(); }
     };
     aBtn.onClick = [this, storeCurrentInto, recall]
     {
@@ -107,8 +116,8 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     addToggle (params::id::mbBypass3, "Hi Byp");
 
     setResizable (true, true);
-    setResizeLimits (860, 680, 1500, 1200);
-    setSize (940, 840);
+    setResizeLimits (880, 760, 1500, 1300);
+    setSize (960, 920);
 
     startTimerHz (30);
 }
@@ -183,13 +192,31 @@ void GlueForgeEditor::timerCallback()
     outMeter.setLevelDb (proc.getOutputLevelDb());  outMeter.repaint();
     const float gr = proc.getCurrentGainReductionDb();
     grMeter.setReductionDb (gr);                    grMeter.repaint();
+    history.push (gr);                              history.repaint();
 
     auto raw = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
-    curve.setParams (raw (params::id::threshold), raw (params::id::ratio), raw (params::id::knee));
-    curve.setOperatingPoint (proc.getInputLevelDb(), gr);
-    curve.repaint();
 
-    history.push (gr); history.repaint();
+    // Mode-aware centre display: transfer curve (compressor) vs pump shape (duck).
+    const int trig = (int) raw (params::id::trigger);
+    if (trig != lastTrigger)
+    {
+        lastTrigger = trig;
+        const bool duck = (trig == 2);
+        shapeEditor.setVisible (duck);
+        curve.setVisible (! duck);
+        displayCaption.setText (duck ? "PUMP SHAPE   (drag to move | double-click add/remove)"
+                                     : "TRANSFER CURVE",
+                                juce::dontSendNotification);
+    }
+
+    if (curve.isVisible())
+    {
+        curve.setParams (raw (params::id::threshold), raw (params::id::ratio), raw (params::id::knee));
+        curve.setOperatingPoint (proc.getInputLevelDb(), gr);
+        curve.repaint();
+    }
+    else
+        shapeEditor.tick();
 }
 
 void GlueForgeEditor::layoutRow (juce::Rectangle<int> area, const juce::StringArray& ids)
@@ -256,7 +283,10 @@ void GlueForgeEditor::resized()
     placeMeter (outMeter, outLbl);
 
     disp.removeFromLeft (8);
-    curve.setBounds (disp.removeFromLeft (disp.getWidth() / 2 - 4));
+    auto curveCol = disp.removeFromLeft (disp.getWidth() / 2 - 4);
+    displayCaption.setBounds (curveCol.removeFromTop (14));
+    curve.setBounds (curveCol);       // compressor modes
+    shapeEditor.setBounds (curveCol); // tempo-duck mode (same area, swapped by visibility)
     disp.removeFromLeft (8);
     history.setBounds (disp);
 
@@ -276,14 +306,20 @@ void GlueForgeEditor::resized()
     const juce::StringArray row7 { params::id::mbTrim1, params::id::mbBypass1, params::id::mbTrim2,
                                    params::id::mbBypass2, params::id::mbTrim3, params::id::mbBypass3 };
 
+    rowHeaders.clear();
     const int rh = r.getHeight() / 7;
-    layoutRow (r.removeFromTop (rh), row1);
-    layoutRow (r.removeFromTop (rh), row2);
-    layoutRow (r.removeFromTop (rh), row3);
-    layoutRow (r.removeFromTop (rh), row4);
-    layoutRow (r.removeFromTop (rh), row5);
-    layoutRow (r.removeFromTop (rh), row6);
-    layoutRow (r, row7);
+    auto section = [&] (juce::Rectangle<int> rowArea, const juce::String& title, const juce::StringArray& ids)
+    {
+        rowHeaders.push_back ({ title, rowArea.removeFromTop (13) });
+        layoutRow (rowArea, ids);
+    };
+    section (r.removeFromTop (rh), "DYNAMICS",               row1);
+    section (r.removeFromTop (rh), "DETECTOR / OUTPUT",      row2);
+    section (r.removeFromTop (rh), "SIDECHAIN",              row3);
+    section (r.removeFromTop (rh), "TEMPO DUCK / CHARACTER", row4);
+    section (r.removeFromTop (rh), "MIX / QUALITY",          row5);
+    section (r.removeFromTop (rh), "MID-SIDE / MULTIBAND",   row6);
+    section (r, "MULTIBAND BANDS", row7);
 }
 
 void GlueForgeEditor::paint (juce::Graphics& g)
@@ -291,8 +327,18 @@ void GlueForgeEditor::paint (juce::Graphics& g)
     g.fillAll (ui::colours::bg);
     g.setColour (ui::colours::accent);
     g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-    g.drawText ("GLUEFORGE", getLocalBounds().removeFromTop (32).withTrimmedLeft (0).removeFromRight (130),
+    g.drawText ("GLUEFORGE", getLocalBounds().removeFromTop (32).removeFromRight (130),
                 juce::Justification::centredRight, false);
+
+    // Section headers + thin separators above each control row.
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+    for (auto& h : rowHeaders)
+    {
+        g.setColour (ui::colours::dim);
+        g.drawText (h.first, h.second.reduced (4, 0), juce::Justification::centredLeft, false);
+        g.setColour (ui::colours::track.withAlpha (0.5f));
+        g.fillRect (h.second.getX(), h.second.getBottom() - 1, h.second.getWidth(), 1);
+    }
 }
 
 void GlueForgeEditor::savePresetToFile()
@@ -323,6 +369,9 @@ void GlueForgeEditor::loadPresetFromFile()
             if (f == juce::File{} || ! f.existsAsFile()) return;
             if (auto xml = juce::XmlDocument::parse (f))
                 if (xml->hasTagName (proc.apvts.state.getType()))
+                {
                     proc.apvts.replaceState (juce::ValueTree::fromXml (*xml));
+                    proc.rebuildShapeLut();
+                }
         });
 }
