@@ -34,6 +34,9 @@ namespace gf::params
         constexpr auto duckCurve = "duckcurve";  // tempo-duck recovery curve, 0..1
         constexpr auto syncRelease = "syncrelease";
         constexpr auto releaseDiv  = "releasediv"; // tempo-synced release division
+        constexpr auto character = "character";  // VCA / FET / Opto
+        constexpr auto drive     = "drive";      // saturation drive, 0..1
+        constexpr auto satMix    = "satmix";     // saturation wet/dry, 0..1
         constexpr auto gain      = "gain";      // output gain, dB
         constexpr auto bypass    = "bypass";
     }
@@ -100,6 +103,14 @@ namespace gf::params
                                  NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f, ""));
         p.push_back (std::make_unique<AudioParameterChoice> (
             ParameterID { id::releaseDiv, 1 }, "Release Div", gf::dsp::divisionChoices(), 3)); // 1/8
+
+        // Character model + saturation
+        p.push_back (std::make_unique<AudioParameterChoice> (
+            ParameterID { id::character, 1 }, "Character", StringArray { "VCA", "FET", "Opto" }, 0));
+        p.push_back (floatParam (id::drive, "Drive",
+                                 NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.3f, ""));
+        p.push_back (floatParam (id::satMix, "Sat Mix",
+                                 NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f, ""));
 
         p.push_back (floatParam (id::gain, "Output",
                                  NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB"));

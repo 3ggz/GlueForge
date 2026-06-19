@@ -9,6 +9,7 @@
 #include "dsp/SidechainFilter.h"
 #include "dsp/TempoDucker.h"
 #include "dsp/TempoSync.h"
+#include "dsp/Saturator.h"
 
 #include <cmath>
 #include <vector>
@@ -365,4 +366,40 @@ TEST_CASE ("TempoDucker: syncToPpq lands at the right phase", "[dsp][ducker][pha
     TempoDucker d; d.prepare (48000.0); d.setParameters (12.0f, 2.0f); d.setRate (120.0, 1.0);
     d.syncToPpq (2.5, 1.0);                                  // half-way through a 1-beat cycle
     REQUIRE (approx (d.processSample(), d.gainForPhase (0.5f), 1.0e-3f));
+}
+
+// ───────────────────────── Phase 5: character models + saturation ─────────────────────────
+
+TEST_CASE ("Saturator: clean pass-through at mix 0", "[dsp][sat][phase5]")
+{
+    juce::AudioBuffer<float> b (1, 8);
+    for (int i = 0; i < 8; ++i) b.setSample (0, i, 0.8f);
+    Saturator s; s.prepare (48000.0, 1);
+    s.setModel (CharacterModel::FET); s.setDrive (1.0f); s.setMix (0.0f);
+    s.process (b);
+    for (int i = 0; i < 8; ++i) REQUIRE (approx (b.getSample (0, i), 0.8f, 1.0e-6f));
+}
+
+TEST_CASE ("Saturator: small signal is ~unity", "[dsp][sat][phase5]")
+{
+    REQUIRE (approx (Saturator::saturateSample (CharacterModel::VCA, 0.001f, 0.5f), 0.001f, 1.0e-4f));
+}
+
+TEST_CASE ("Saturator: high drive reduces peak; FET hardest, Opto gentlest", "[dsp][sat][phase5]")
+{
+    const float vca  = std::abs (Saturator::saturateSample (CharacterModel::VCA,  1.0f, 1.0f));
+    const float fet  = std::abs (Saturator::saturateSample (CharacterModel::FET,  1.0f, 1.0f));
+    const float opto = std::abs (Saturator::saturateSample (CharacterModel::Opto, 1.0f, 1.0f));
+    REQUIRE (vca  < 1.0f);
+    REQUIRE (fet  < 1.0f);
+    REQUIRE (opto < 1.0f);
+    REQUIRE (fet < vca);   // FET clips hardest
+    REQUIRE (vca < opto);  // Opto gentlest
+}
+
+TEST_CASE ("Character: FET is snappier and Opto smoother than VCA", "[dsp][character][phase5]")
+{
+    REQUIRE (characterAttackScale (CharacterModel::FET) < characterAttackScale (CharacterModel::VCA));
+    REQUIRE (characterAttackScale (CharacterModel::VCA) < characterAttackScale (CharacterModel::Opto));
+    REQUIRE (characterReleaseScale (CharacterModel::FET) < characterReleaseScale (CharacterModel::Opto));
 }

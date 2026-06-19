@@ -31,6 +31,9 @@ GlueForgeProcessor::GlueForgeProcessor()
     duckCurveParam  = apvts.getRawParameterValue (gf::params::id::duckCurve);
     syncReleaseParam = apvts.getRawParameterValue (gf::params::id::syncRelease);
     releaseDivParam  = apvts.getRawParameterValue (gf::params::id::releaseDiv);
+    characterParam  = apvts.getRawParameterValue (gf::params::id::character);
+    driveParam      = apvts.getRawParameterValue (gf::params::id::drive);
+    satMixParam     = apvts.getRawParameterValue (gf::params::id::satMix);
     bypassParam     = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
     jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr
              && mixParam != nullptr && rangeParam != nullptr && linkParam != nullptr);
@@ -51,6 +54,7 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     scFilter.prepare (sampleRate, numOut);
     ducker.prepare (sampleRate);
+    saturator.prepare (sampleRate, numOut);
     compressor.prepare (sampleRate, numOut);
     cpValid = false; // force coefficient recompute for the new sample rate on next block
 
@@ -163,6 +167,8 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     for (int ch = 0; ch < numCh; ++ch)
         dryBuffer.copyFrom (ch, 0, mainBus.getReadPointer (ch), numSamples);
 
+    const auto charModel = (gf::dsp::CharacterModel) juce::jlimit (0, 2, (int) characterParam->load());
+
     // 1) Wet generation: tempo-synced volume-shaper duck, or the compressor.
     if (trigger == 2) // Tempo Duck
     {
@@ -190,12 +196,14 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         cp.thresholdDb   = thresholdParam->load();
         cp.ratio         = ratioParam->load();
         cp.kneeDb        = kneeParam->load();
-        cp.attackMs      = attackParam->load();
+        // Character model scales attack/release (FET snappier, Opto smoother).
+        cp.attackMs      = attackParam->load() * gf::dsp::characterAttackScale (charModel);
         // Synced release depends on BPM (external to the param set) — compute it
         // into cp.releaseMs *before* the change check so a tempo change re-applies.
-        cp.releaseMs     = (syncReleaseParam->load() >= 0.5f)
-                             ? (float) gf::dsp::beatsToMs (gf::dsp::divisionBeats ((int) releaseDivParam->load()), bpm)
-                             : releaseParam->load();
+        cp.releaseMs     = ((syncReleaseParam->load() >= 0.5f)
+                              ? (float) gf::dsp::beatsToMs (gf::dsp::divisionBeats ((int) releaseDivParam->load()), bpm)
+                              : releaseParam->load())
+                           * gf::dsp::characterReleaseScale (charModel);
         cp.holdMs        = holdParam->load();
         cp.makeupDb      = makeupParam->load();
         cp.detectorBlend = detectorParam->load();
@@ -211,6 +219,12 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         compressor.process (mainBus, &detectionBuffer);
         grMeterDb.store (compressor.getGainReductionDb());
     }
+
+    // Character saturation colours the wet (processed) signal before the mix.
+    saturator.setModel (charModel);
+    saturator.setDrive (driveParam->load());
+    saturator.setMix   (satMixParam->load());
+    saturator.process (mainBus);
 
     // 2) Parallel mix (wet/dry) + output gain in one smoothed per-sample pass.
     mixSmoothed.setTargetValue (mixParam->load());
