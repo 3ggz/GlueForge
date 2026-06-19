@@ -24,6 +24,10 @@ namespace gf::params
         constexpr auto range     = "range";      // max gain reduction, dB
         constexpr auto link      = "link";       // stereo link, 0..1
         constexpr auto automakeup = "automakeup";
+        constexpr auto trigger   = "trigger";   // Internal / External SC / Tempo Duck
+        constexpr auto scHpf     = "schpf";     // sidechain detector high-pass, Hz
+        constexpr auto scLpf     = "sclpf";     // sidechain detector low-pass, Hz
+        constexpr auto scListen  = "sclisten";  // audition the detection signal
         constexpr auto gain      = "gain";      // output gain, dB
         constexpr auto bypass    = "bypass";
     }
@@ -71,11 +75,23 @@ namespace gf::params
                                  NormalisableRange<float> (0.0f, 60.0f, 0.1f), 60.0f, "dB"));
         p.push_back (floatParam (id::link, "Link",
                                  NormalisableRange<float> (0.0f, 1.0f, 0.01f), 1.0f, ""));
+
+        // Sidechain / trigger
+        p.push_back (std::make_unique<AudioParameterChoice> (
+            ParameterID { id::trigger, 1 }, "Trigger",
+            StringArray { "Internal", "External SC", "Tempo Duck" }, 0));
+        p.push_back (floatParam (id::scHpf, "SC HPF",
+                                 skewed (20.0f, 2000.0f, 1.0f, 200.0f), 20.0f, "Hz"));
+        p.push_back (floatParam (id::scLpf, "SC LPF",
+                                 skewed (200.0f, 20000.0f, 1.0f, 2000.0f), 20000.0f, "Hz"));
+
         p.push_back (floatParam (id::gain, "Output",
                                  NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB"));
 
         p.push_back (std::make_unique<AudioParameterBool> (
             ParameterID { id::automakeup, 1 }, "Auto Makeup", false));
+        p.push_back (std::make_unique<AudioParameterBool> (
+            ParameterID { id::scListen, 1 }, "SC Listen", false));
         p.push_back (std::make_unique<AudioParameterBool> (
             ParameterID { id::bypass, 1 }, "Bypass", false));
 

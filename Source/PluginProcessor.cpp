@@ -22,6 +22,10 @@ GlueForgeProcessor::GlueForgeProcessor()
     rangeParam      = apvts.getRawParameterValue (gf::params::id::range);
     linkParam       = apvts.getRawParameterValue (gf::params::id::link);
     autoMakeupParam = apvts.getRawParameterValue (gf::params::id::automakeup);
+    triggerParam    = apvts.getRawParameterValue (gf::params::id::trigger);
+    scHpfParam      = apvts.getRawParameterValue (gf::params::id::scHpf);
+    scLpfParam      = apvts.getRawParameterValue (gf::params::id::scLpf);
+    scListenParam   = apvts.getRawParameterValue (gf::params::id::scListen);
     bypassParam     = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
     jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr
              && mixParam != nullptr && rangeParam != nullptr && linkParam != nullptr);
@@ -37,8 +41,10 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     mixSmoothed.reset (sampleRate, 0.02);
     mixSmoothed.setCurrentAndTargetValue (mixParam->load());
 
-    dryBuffer.setSize (numOut, samplesPerBlock, false, false, true); // pre-allocate dry copy
+    dryBuffer.setSize       (numOut, samplesPerBlock, false, false, true); // pre-allocate dry copy
+    detectionBuffer.setSize (numOut, samplesPerBlock, false, false, true); // key/detection signal
 
+    scFilter.prepare (sampleRate, numOut);
     compressor.prepare (sampleRate, numOut);
     cpValid = false; // force coefficient recompute for the new sample rate on next block
 
@@ -89,6 +95,54 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         return;
     }
 
+    // --- Build the detection (key) signal: external sidechain if selected and
+    //     actually connected, otherwise the main signal; then the SC filter. ---
+    const int trigger = (int) triggerParam->load();
+
+    bool scConnected = false;
+    if (auto* scBus = getBus (true, 1))
+        scConnected = scBus->isEnabled() && getChannelCountOfBus (true, 1) > 0;
+    const bool useExternal = (trigger == 1) && scConnected;
+
+    if (useExternal)
+    {
+        auto scBuf = getBusBuffer (buffer, true, 1);
+        const int scCh = juce::jmax (1, scBuf.getNumChannels());
+        for (int ch = 0; ch < numCh; ++ch)
+            detectionBuffer.copyFrom (ch, 0, scBuf.getReadPointer (juce::jmin (ch, scCh - 1)), numSamples);
+    }
+    else
+    {
+        for (int ch = 0; ch < numCh; ++ch)
+            detectionBuffer.copyFrom (ch, 0, mainBus.getReadPointer (ch), numSamples);
+    }
+
+    scFilter.setCutoffs (scHpfParam->load(), scLpfParam->load());
+    if (scFilter.isActive())
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            auto* d = detectionBuffer.getWritePointer (ch);
+            for (int n = 0; n < numSamples; ++n)
+                d[n] = scFilter.processSample (ch, d[n]);
+        }
+
+    // Sidechain audition: output the (filtered) key signal, skip compression.
+    if (scListenParam->load() >= 0.5f)
+    {
+        gainSmoothed.setTargetValue (juce::Decibels::decibelsToGain (gainParam->load()));
+        mixSmoothed.setCurrentAndTargetValue (mixParam->load());
+        auto* const* w = mainBus.getArrayOfWritePointers();
+        auto* const* d = detectionBuffer.getArrayOfReadPointers();
+        for (int n = 0; n < numSamples; ++n)
+        {
+            const float og = gainSmoothed.getNextValue();
+            for (int ch = 0; ch < numCh; ++ch)
+                w[ch][n] = d[ch][n] * og;
+        }
+        grMeterDb.store (0.0f);
+        return;
+    }
+
     // Keep a dry copy for the parallel (wet/dry) mix.
     for (int ch = 0; ch < numCh; ++ch)
         dryBuffer.copyFrom (ch, 0, mainBus.getReadPointer (ch), numSamples);
@@ -112,7 +166,7 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         lastCp  = cp;
         cpValid = true;
     }
-    compressor.process (mainBus);
+    compressor.process (mainBus, &detectionBuffer);
     grMeterDb.store (compressor.getGainReductionDb());
 
     // 2) Parallel mix (wet/dry) + output gain in one smoothed per-sample pass.

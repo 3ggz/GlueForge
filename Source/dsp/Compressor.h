@@ -94,14 +94,21 @@ namespace gf::dsp
             grMeterDb_ = 0.0f;
         }
 
-        void process (juce::AudioBuffer<float>& buffer)
+        // Detect from `detection` if supplied (the key/sidechain), else from the
+        // signal itself. Gain is always applied to `buffer`.
+        void process (juce::AudioBuffer<float>& buffer,
+                      const juce::AudioBuffer<float>* detection = nullptr)
         {
             const int n  = buffer.getNumSamples();
             const int ch = juce::jmin (numCh_, buffer.getNumChannels());
             if (ch <= 0 || n <= 0)
                 return;
 
+            const juce::AudioBuffer<float>& det = detection != nullptr ? *detection : buffer;
+            const int detCh = juce::jmax (1, det.getNumChannels());
+
             auto* const* chans = buffer.getArrayOfWritePointers();
+            auto* const* dptr  = det.getArrayOfReadPointers();
 
             float worst = 0.0f;
             for (int i = 0; i < n; ++i)
@@ -110,7 +117,8 @@ namespace gf::dsp
                 float maxLvl = 0.0f;
                 for (int c = 0; c < ch; ++c)
                 {
-                    lvl[c] = detector_[c].processSample (chans[c][i]);
+                    const int dc = juce::jmin (c, detCh - 1);
+                    lvl[c] = detector_[c].processSample (dptr[dc][i]);
                     maxLvl = juce::jmax (maxLvl, lvl[c]);
                 }
 

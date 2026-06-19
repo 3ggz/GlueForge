@@ -6,6 +6,7 @@
 #include <atomic>
 
 #include "dsp/Compressor.h"
+#include "dsp/SidechainFilter.h"
 
 /**
     GlueForge — Phase 1 skeleton.
@@ -67,11 +68,17 @@ private:
     std::atomic<float>* rangeParam     = nullptr;
     std::atomic<float>* linkParam      = nullptr;
     std::atomic<float>* autoMakeupParam = nullptr;
+    std::atomic<float>* triggerParam   = nullptr; // 0 Internal, 1 External SC, 2 Tempo Duck
+    std::atomic<float>* scHpfParam     = nullptr;
+    std::atomic<float>* scLpfParam     = nullptr;
+    std::atomic<float>* scListenParam  = nullptr;
     juce::AudioParameterBool* bypassParam = nullptr;
 
     gf::dsp::Compressor compressor;
+    gf::dsp::SidechainFilter scFilter;                  // detector-path HP/LP
     gf::dsp::CompressorParameters lastCp;               // last applied params (change detection)
     bool cpValid = false;
+    juce::AudioBuffer<float> detectionBuffer;           // key signal fed to the detector
     juce::AudioBuffer<float> dryBuffer;                 // dry copy for parallel (wet/dry) mix
     juce::LinearSmoothedValue<float> mixSmoothed;       // wet/dry, smoothed
     juce::LinearSmoothedValue<float> gainSmoothed;      // output gain (linear), smoothed

@@ -6,6 +6,7 @@
 #include "dsp/BallisticsSmoother.h"
 #include "dsp/LevelDetector.h"
 #include "dsp/Compressor.h"
+#include "dsp/SidechainFilter.h"
 
 #include <cmath>
 #include <vector>
@@ -267,4 +268,76 @@ TEST_CASE ("Compressor: full link applies the louder channel's reduction to both
     }
     // linked: R is pulled down by L's reduction, well below its 0.001 input
     REQUIRE (std::abs (buf.getSample (1, 511)) < 0.0005f);
+}
+
+// ───────────────────────── Phase 4a: external sidechain + SC filter ─────────────────────────
+
+namespace
+{
+    float steadyRms (SidechainFilter& f, float freq, double sr = 48000.0)
+    {
+        f.reset();
+        const int N = (int) (0.2 * sr);
+        double acc = 0.0; int counted = 0;
+        for (int i = 0; i < N; ++i)
+        {
+            const float x = (float) std::sin (2.0 * juce::MathConstants<double>::pi * freq * i / sr);
+            const float y = f.processSample (0, x);
+            if (i > N / 2) { acc += (double) y * y; ++counted; }
+        }
+        return (float) std::sqrt (acc / juce::jmax (1, counted));
+    }
+}
+
+TEST_CASE ("SidechainFilter: high-pass attenuates lows and passes highs", "[dsp][scfilter][phase4]")
+{
+    SidechainFilter f; f.prepare (48000.0, 1);
+    f.setCutoffs (500.0f, 20000.0f);              // HPF 500 Hz, LPF effectively off
+    REQUIRE (steadyRms (f, 50.0f)   < 0.2f);      // a decade below cutoff -> strongly attenuated
+    REQUIRE (steadyRms (f, 5000.0f) > 0.6f);      // a decade above -> passes (sine RMS ~0.707)
+}
+
+TEST_CASE ("SidechainFilter: low-pass attenuates highs and passes lows", "[dsp][scfilter][phase4]")
+{
+    SidechainFilter f; f.prepare (48000.0, 1);
+    f.setCutoffs (20.0f, 500.0f);                 // HPF off, LPF 500 Hz
+    REQUIRE (steadyRms (f, 50.0f)   > 0.6f);
+    REQUIRE (steadyRms (f, 5000.0f) < 0.2f);
+}
+
+TEST_CASE ("SidechainFilter: bypasses at extreme settings (constant signal preserved)", "[dsp][scfilter][phase4]")
+{
+    SidechainFilter f; f.prepare (48000.0, 1);
+    f.setCutoffs (20.0f, 20000.0f);               // both at extremes -> pass-through
+    float y = 0.0f;
+    for (int i = 0; i < 1000; ++i) y = f.processSample (0, 0.5f); // DC must survive
+    REQUIRE (approx (y, 0.5f, 1.0e-4f));
+}
+
+TEST_CASE ("Compressor: external detection ducks a quiet main when the key is loud", "[dsp][compressor][phase4]")
+{
+    Compressor comp; comp.prepare (48000.0, 2);
+    CompressorParameters p;
+    p.thresholdDb = -30.0f; p.ratio = 8.0f; p.kneeDb = 0.0f;
+    p.attackMs = 2.0f; p.releaseMs = 50.0f; p.stereoLink = 1.0f;
+    comp.setParameters (p);
+
+    juce::AudioBuffer<float> main (2, 512), key (2, 512);
+    float lastMain = 0.0f;
+    for (int b = 0; b < 40; ++b)
+    {
+        for (int i = 0; i < 512; ++i)
+        {
+            main.setSample (0, i, 0.05f); main.setSample (1, i, 0.05f); // quiet
+            key.setSample  (0, i, 0.5f);  key.setSample  (1, i, 0.5f);  // loud key
+        }
+        comp.process (main, &key);
+        lastMain = main.getSample (0, 511);
+    }
+
+    GainComputer ref; ref.setParameters (-30.0f, 8.0f, 0.0f);
+    const float expGain = juce::Decibels::decibelsToGain (
+        ref.computeGainReductionDb (juce::Decibels::gainToDecibels (0.5f, -100.0f)));
+    // The quiet main is reduced by the KEY-driven gain reduction (detection decoupled).
+    REQUIRE (approx (std::abs (lastMain), 0.05f * expGain, 0.001f));
 }
