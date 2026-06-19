@@ -344,7 +344,7 @@ void GlueForgeEditor::paint (juce::Graphics& g)
 void GlueForgeEditor::savePresetToFile()
 {
     auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                   .getChildFile ("GlueForge").getChildFile ("Presets");
+                   .getChildFile ("Nightshift Audio").getChildFile ("GlueForge").getChildFile ("Presets");
     dir.createDirectory();
     chooser = std::make_unique<juce::FileChooser> ("Save GlueForge preset", dir, "*.xml");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles,
@@ -360,7 +360,7 @@ void GlueForgeEditor::savePresetToFile()
 void GlueForgeEditor::loadPresetFromFile()
 {
     auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                   .getChildFile ("GlueForge").getChildFile ("Presets");
+                   .getChildFile ("Nightshift Audio").getChildFile ("GlueForge").getChildFile ("Presets");
     chooser = std::make_unique<juce::FileChooser> ("Load GlueForge preset", dir, "*.xml");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
         [this] (const juce::FileChooser& fc)

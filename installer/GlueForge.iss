@@ -10,8 +10,8 @@
 [Setup]
 AppName={#MyAppName}
 AppVersion={#MyVersion}
-AppPublisher=GlueForge
-DefaultDirName={autopf}\{#MyAppName}
+AppPublisher=Nightshift Audio
+DefaultDirName={autopf}\Nightshift Audio\{#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=GlueForge-Setup-{#MyVersion}

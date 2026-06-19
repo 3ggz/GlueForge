@@ -20,8 +20,8 @@ add_subdirectory(libs/JUCE)
 #   not a rewrite. AU is simply skipped by the generator on non-Apple platforms.
 # ---------------------------------------------------------------------------
 juce_add_plugin(GlueForge
-    COMPANY_NAME              "GlueForge"
-    PLUGIN_MANUFACTURER_CODE  Glfg
+    COMPANY_NAME              "Nightshift Audio"
+    PLUGIN_MANUFACTURER_CODE  Nsau
     PLUGIN_CODE               Glf1
     FORMATS                   VST3 Standalone AU
     PRODUCT_NAME              "GlueForge"
