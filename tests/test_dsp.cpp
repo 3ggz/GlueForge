@@ -11,6 +11,7 @@
 #include "dsp/TempoSync.h"
 #include "dsp/Saturator.h"
 #include "dsp/Multiband.h"
+#include "dsp/DuckShape.h"
 
 #include <cmath>
 #include <vector>
@@ -354,19 +355,26 @@ TEST_CASE ("TempoSync: note division converts to milliseconds", "[dsp][temposync
     REQUIRE (approx ((float) beatsToMs (divisionBeats (2), 120.0), 500.0f, 0.01f)); // 1/4 @120 = 500 ms
 }
 
-TEST_CASE ("TempoDucker: dips on the downbeat and recovers", "[dsp][ducker][phase4]")
+TEST_CASE ("TempoDucker: advance wraps the phase within [0,1)", "[dsp][ducker][phase4]")
 {
-    TempoDucker d; d.prepare (48000.0); d.setParameters (24.0f, 2.0f);
-    REQUIRE (approx (d.gainForPhase (0.0f), juce::Decibels::decibelsToGain (-24.0f), 1.0e-4f));
-    REQUIRE (d.gainForPhase (0.999f) > 0.99f);
-    REQUIRE (d.gainForPhase (0.25f) < d.gainForPhase (0.75f)); // monotonic recovery
+    TempoDucker d; d.prepare (48000.0); d.setRate (120.0, 1.0); d.reset();
+    float prev = 0.0f; bool wrapped = false;
+    for (int i = 0; i < 48000; ++i) // 1 s at 120 BPM = two 1-beat cycles
+    {
+        const float p = d.advance();
+        REQUIRE (p >= 0.0f);
+        REQUIRE (p <  1.0f);
+        if (p < prev) wrapped = true;
+        prev = p;
+    }
+    REQUIRE (wrapped);
 }
 
-TEST_CASE ("TempoDucker: syncToPpq lands at the right phase", "[dsp][ducker][phase4]")
+TEST_CASE ("TempoDucker: syncToPpq sets the phase", "[dsp][ducker][phase4]")
 {
-    TempoDucker d; d.prepare (48000.0); d.setParameters (12.0f, 2.0f); d.setRate (120.0, 1.0);
-    d.syncToPpq (2.5, 1.0);                                  // half-way through a 1-beat cycle
-    REQUIRE (approx (d.processSample(), d.gainForPhase (0.5f), 1.0e-3f));
+    TempoDucker d; d.prepare (48000.0); d.setRate (120.0, 1.0);
+    d.syncToPpq (2.5, 1.0); // half-way through a 1-beat cycle
+    REQUIRE (approx (d.currentPhase(), 0.5f, 1.0e-3f));
 }
 
 // ───────────────────────── Phase 5: character models + saturation ─────────────────────────
@@ -501,4 +509,47 @@ TEST_CASE ("Saturator: process() blends wet and dry at mix 0.5", "[dsp][sat][pha
 
     const float expected = 0.5f * Saturator::saturateSample (CharacterModel::VCA, 0.8f, 1.0f) + 0.5f * 0.8f;
     REQUIRE (approx (b.getSample (0, 4), expected, 1.0e-5f));
+}
+
+// ───────────────────────── Editable pump shape ─────────────────────────
+
+TEST_CASE ("DuckShape: default dips at the downbeat and recovers", "[dsp][shape]")
+{
+    DuckShape s;
+    REQUIRE (approx (s.valueAt (0.0f),   0.0f, 0.02f)); // fully ducked
+    REQUIRE (approx (s.valueAt (0.999f), 1.0f, 0.05f)); // recovered
+}
+
+TEST_CASE ("DuckShape: linear interpolation between nodes", "[dsp][shape]")
+{
+    DuckShape s;
+    ShapeNode n[] = { { 0.0f, 0.0f }, { 1.0f, 1.0f } };
+    s.setNodes (n, 2);
+    REQUIRE (approx (s.valueAt (0.5f), 0.5f, 0.01f));
+}
+
+TEST_CASE ("DuckShape: toString/fromString round-trips", "[dsp][shape]")
+{
+    DuckShape a;
+    ShapeNode n[] = { { 0.0f, 0.1f }, { 0.3f, 0.8f }, { 1.0f, 0.9f } };
+    a.setNodes (n, 3);
+    DuckShape b;
+    b.fromString (a.toString());
+    REQUIRE (b.getNumNodes() == 3);
+    REQUIRE (approx (a.valueAt (0.3f), b.valueAt (0.3f), 1.0e-3f));
+    REQUIRE (approx (a.valueAt (0.7f), b.valueAt (0.7f), 1.0e-3f));
+}
+
+TEST_CASE ("DuckShape: fromString sanitizes (clamp, sort, endpoints)", "[dsp][shape]")
+{
+    DuckShape s;
+    s.fromString ("0.7:2.0 0.1:-0.5 0.4:0.5"); // unsorted, out-of-range values
+    REQUIRE (s.getNode (0).phase == 0.0f);                       // first endpoint forced to 0
+    REQUIRE (s.getNode (s.getNumNodes() - 1).phase == 1.0f);     // last forced to 1
+    for (int i = 0; i < s.getNumNodes(); ++i)
+    {
+        REQUIRE (s.getNode (i).value >= 0.0f);
+        REQUIRE (s.getNode (i).value <= 1.0f);
+        if (i > 0) REQUIRE (s.getNode (i).phase >= s.getNode (i - 1).phase); // sorted
+    }
 }

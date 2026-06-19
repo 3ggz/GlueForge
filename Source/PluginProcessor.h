@@ -11,6 +11,7 @@
 #include "dsp/TempoDucker.h"
 #include "dsp/Saturator.h"
 #include "dsp/Multiband.h"
+#include "dsp/DuckShape.h"
 
 /**
     GlueForge — a real-time-safe stereo dynamics processor.
@@ -64,6 +65,13 @@ public:
     float getInputLevelDb()  const { return inLevelDb.load(); }
     float getOutputLevelDb() const { return outLevelDb.load(); }
 
+    // Tempo-duck pump shape (the editable LFOTool-style envelope).
+    float        getDuckPhase()        const { return duckPhase.load(); }
+    int          getShapeGeneration()  const { return shapeGeneration.load(); }
+    juce::String getDuckShapeString()  const { return apvts.state.getProperty ("duckShape").toString(); }
+    void setDuckShapeString (const juce::String& s); // set on the state tree + rebuild LUT (message thread)
+    void rebuildShapeLut();                          // read shape from state tree -> publish LUT (message thread)
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -94,7 +102,6 @@ private:
     std::atomic<float>* scListenParam  = nullptr;
     std::atomic<float>* duckRateParam  = nullptr;
     std::atomic<float>* duckDepthParam = nullptr;
-    std::atomic<float>* duckCurveParam = nullptr;
     std::atomic<float>* syncReleaseParam = nullptr;
     std::atomic<float>* releaseDivParam  = nullptr;
     std::atomic<float>* characterParam = nullptr;
@@ -116,6 +123,17 @@ private:
     gf::dsp::TempoDucker ducker;                        // tempo-synced volume shaper
     gf::dsp::Saturator saturator;                       // character coloration
     gf::dsp::Multiband multiband;                       // 3-band LR4 multiband
+
+    // Editable pump shape: canonical on the message thread; published LUT handed
+    // to the audio thread via a try-lock (audio never blocks).
+    gf::dsp::DuckShape duckShape;
+    std::array<float, gf::dsp::DuckShape::kLutSize> publishedLut {};
+    std::array<float, gf::dsp::DuckShape::kLutSize> audioLut {};
+    juce::SpinLock     shapeLock;
+    bool               shapeDirty = true;
+    std::atomic<int>   shapeGeneration { 0 };
+    std::atomic<float> duckPhase { 0.0f };
+    float shapeLookup (float phase) const;              // audio-thread LUT interp
 
     // Lookahead delay + oversampling (both contribute reported latency / PDC).
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> lookaheadDelay { kDelayLineCapacity };

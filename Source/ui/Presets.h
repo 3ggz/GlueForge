@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../ParamIDs.h"
+#include "../dsp/DuckShape.h"
 #include <vector>
 #include <utility>
 
@@ -12,6 +13,7 @@ namespace gf::ui
         juce::String name;
         juce::String category;
         std::vector<std::pair<juce::String, float>> values; // paramID -> real value
+        juce::String shape; // optional tempo-duck pump shape ("p:v p:v …"); empty = default
     };
 
     inline std::vector<Preset> factoryPresets()
@@ -53,10 +55,12 @@ namespace gf::ui
                 {scHpf,40},{mix,1},{link,1},{trigger,1},{character,0},{satMix,0} } },
 
             { "Tempo Duck 1/4 (Drop Pump)", "EDM Sidechain",
-              { {trigger,2},{duckRate,2},{duckDepth,20},{duckCurve,0.35f},{mix,1},{gain,0} } },
+              { {trigger,2},{duckRate,2},{duckDepth,20},{mix,1},{gain,0} },
+              "0.0:0.0 0.15:0.05 0.55:0.7 1.0:1.0" },
 
             { "Chord Stab Duck 1/8", "EDM Sidechain",
-              { {trigger,2},{duckRate,3},{duckDepth,14},{duckCurve,0.5f},{mix,1},{gain,0} } },
+              { {trigger,2},{duckRate,3},{duckDepth,14},{mix,1},{gain,0} },
+              "0.0:0.1 0.5:0.65 1.0:1.0" },
         };
     }
 
@@ -66,6 +70,10 @@ namespace gf::ui
         // regardless of prior state, then apply the preset's overrides.
         for (auto* param : apvts.processor.getParameters())
             param->setValueNotifyingHost (param->getDefaultValue());
+
+        // Pump shape lives on the state tree: reset to default, then the preset's.
+        apvts.state.setProperty ("duckShape",
+            p.shape.isNotEmpty() ? p.shape : gf::dsp::DuckShape().toString(), nullptr);
 
         for (auto& kv : p.values)
             if (auto* prm = apvts.getParameter (kv.first))

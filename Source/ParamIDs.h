@@ -32,7 +32,6 @@ namespace gf::params
         constexpr auto scListen  = "sclisten";  // audition the detection signal
         constexpr auto duckRate  = "duckrate";   // tempo-duck note division
         constexpr auto duckDepth = "duckdepth";  // tempo-duck depth, dB
-        constexpr auto duckCurve = "duckcurve";  // tempo-duck recovery curve, 0..1
         constexpr auto syncRelease = "syncrelease";
         constexpr auto releaseDiv  = "releasediv"; // tempo-synced release division
         constexpr auto character = "character";  // VCA / FET / Opto
@@ -134,8 +133,6 @@ namespace gf::params
             ParameterID { id::duckRate, 1 }, "Duck Rate", gf::dsp::divisionChoices(), 2)); // 1/4
         p.push_back (floatParam (id::duckDepth, "Duck Depth",
                                  NormalisableRange<float> (0.0f, 36.0f, 0.1f), 12.0f, "dB"));
-        p.push_back (fmtParam (id::duckCurve, "Duck Curve",
-                               NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.5f, pct));
         p.push_back (std::make_unique<AudioParameterChoice> (
             ParameterID { id::releaseDiv, 1 }, "Release Div", gf::dsp::divisionChoices(), 3)); // 1/8
 

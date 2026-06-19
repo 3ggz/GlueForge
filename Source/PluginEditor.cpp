@@ -87,7 +87,6 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
 
     addCombo  (params::id::duckRate,  "Duck Rate");
     addRotary (params::id::duckDepth, "Depth");
-    addRotary (params::id::duckCurve, "Curve");
     addCombo  (params::id::character, "Character");
     addRotary (params::id::drive,     "Drive");
     addRotary (params::id::satMix,    "Sat Mix");
@@ -269,7 +268,7 @@ void GlueForgeEditor::resized()
     const juce::StringArray row2 { params::id::detector, params::id::range, params::id::link,
                                    params::id::makeup, params::id::gain, params::id::automakeup };
     const juce::StringArray row3 { params::id::trigger, params::id::scHpf, params::id::scLpf, params::id::scListen };
-    const juce::StringArray row4 { params::id::duckRate, params::id::duckDepth, params::id::duckCurve,
+    const juce::StringArray row4 { params::id::duckRate, params::id::duckDepth,
                                    params::id::character, params::id::drive, params::id::satMix };
     const juce::StringArray row5 { params::id::mix, params::id::lookahead, params::id::oversampling };
     const juce::StringArray row6 { params::id::midside, params::id::mbEnable, params::id::mbXLow,

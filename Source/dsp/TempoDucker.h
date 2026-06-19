@@ -1,38 +1,21 @@
 #pragma once
 
-#include <juce_audio_basics/juce_audio_basics.h>
 #include "TempoSync.h"
-
 #include <cmath>
 
 namespace gf::dsp
 {
     /**
-        Tempo-synced ducking envelope — the "fake sidechain" / volume-shaper pump.
-
-        Produces a per-sample gain that dips to `minGain` on the downbeat (phase 0)
-        and recovers toward 1 over the note division, following a power curve
-        (exponent > 1 = pumpier / late recovery; < 1 = quick recovery):
-
-            gain(phase) = minGain + (1 - minGain) * phase^curve
-
-        The phase free-runs per sample (`processSample`) and is re-locked to the
-        host transport at each block start (`syncToPpq`) so the pump stays smooth
-        and in time across loops/relocates. Pure w.r.t. (phase, depth, curve) —
-        `gainForPhase` is the unit-testable shape; the processor supplies tempo +
-        position via thin adapters.
+        Tempo-synced phase clock for the pump/duck. Free-runs at the host tempo and
+        re-locks to the transport at each block start; the gain envelope itself is
+        defined by an editable DuckShape, evaluated by the processor at the phase
+        this clock provides. Pure and allocation-free.
     */
     class TempoDucker
     {
     public:
         void prepare (double sampleRate) { sr_ = sampleRate > 0.0 ? sampleRate : 44100.0; phase_ = 0.0f; }
         void reset()                     { phase_ = 0.0f; }
-
-        void setParameters (float depthDb, float curveExp)
-        {
-            minGain_ = juce::Decibels::decibelsToGain (-juce::jmax (0.0f, depthDb));
-            curve_   = juce::jmax (0.05f, curveExp);
-        }
 
         void setRate (double bpm, double divisionInBeats)
         {
@@ -49,25 +32,20 @@ namespace gf::dsp
             }
         }
 
-        float gainForPhase (float phase) const
+        // Returns the current phase in [0,1), then advances by one sample.
+        float advance()
         {
-            const float p = phase - std::floor (phase);
-            return minGain_ + (1.0f - minGain_) * std::pow (p, curve_);
-        }
-
-        float processSample()
-        {
-            const float g = gainForPhase (phase_);
+            const float p = phase_;
             phase_ += (float) phaseInc_;
             if (phase_ >= 1.0f) phase_ -= std::floor (phase_);
-            return g;
+            return p;
         }
+
+        float currentPhase() const { return phase_; }
 
     private:
         double sr_       = 44100.0;
         double phaseInc_ = 0.0;
         float  phase_    = 0.0f;
-        float  minGain_  = 0.0f;
-        float  curve_    = 2.0f;
     };
 }

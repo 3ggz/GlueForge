@@ -69,7 +69,6 @@ GlueForgeProcessor::GlueForgeProcessor()
     scListenParam   = apvts.getRawParameterValue (gf::params::id::scListen);
     duckRateParam   = apvts.getRawParameterValue (gf::params::id::duckRate);
     duckDepthParam  = apvts.getRawParameterValue (gf::params::id::duckDepth);
-    duckCurveParam  = apvts.getRawParameterValue (gf::params::id::duckCurve);
     syncReleaseParam = apvts.getRawParameterValue (gf::params::id::syncRelease);
     releaseDivParam  = apvts.getRawParameterValue (gf::params::id::releaseDiv);
     characterParam  = apvts.getRawParameterValue (gf::params::id::character);
@@ -95,6 +94,11 @@ GlueForgeProcessor::GlueForgeProcessor()
     // Latency changes (lookahead / oversampling) recompute PDC off the audio thread.
     apvts.addParameterListener (gf::params::id::lookahead, this);
     apvts.addParameterListener (gf::params::id::oversampling, this);
+
+    // Seed the default pump shape into the state tree and publish its LUT.
+    apvts.state.setProperty ("duckShape", duckShape.toString(), nullptr);
+    rebuildShapeLut();
+    audioLut = publishedLut; // constructor is single-threaded
 }
 
 GlueForgeProcessor::~GlueForgeProcessor()
@@ -129,6 +133,33 @@ void GlueForgeProcessor::updateLatency()
     if (auto* ovs = activeOversampler())
         os = (int) ovs->getLatencyInSamples();
     setLatencySamples (la + os);
+}
+
+void GlueForgeProcessor::rebuildShapeLut()
+{
+    // The state tree is the source of truth for the shape (so A/B + presets carry it).
+    duckShape.fromString (apvts.state.getProperty ("duckShape").toString());
+    {
+        const juce::SpinLock::ScopedLockType sl (shapeLock);
+        std::copy (duckShape.lut(), duckShape.lut() + gf::dsp::DuckShape::kLutSize, publishedLut.begin());
+        shapeDirty = true;
+    }
+    shapeGeneration.fetch_add (1);
+}
+
+void GlueForgeProcessor::setDuckShapeString (const juce::String& s)
+{
+    apvts.state.setProperty ("duckShape", s, nullptr);
+    rebuildShapeLut();
+}
+
+float GlueForgeProcessor::shapeLookup (float phase) const
+{
+    const float fpos = phase * (float) (gf::dsp::DuckShape::kLutSize - 1);
+    const int   i0   = juce::jlimit (0, gf::dsp::DuckShape::kLutSize - 1, (int) fpos);
+    const int   i1   = juce::jmin (i0 + 1, gf::dsp::DuckShape::kLutSize - 1);
+    const float frac = fpos - (float) i0;
+    return audioLut[(size_t) i0] + frac * (audioLut[(size_t) i1] - audioLut[(size_t) i0]);
 }
 
 void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -198,6 +229,13 @@ bool GlueForgeProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
 void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // Pick up a newly-published pump shape without ever blocking the audio thread.
+    if (shapeLock.tryEnter())
+    {
+        if (shapeDirty) { std::copy (publishedLut.begin(), publishedLut.end(), audioLut.begin()); shapeDirty = false; }
+        shapeLock.exit();
+    }
 
     auto mainBus = getBusBuffer (buffer, false, 0); // view into the main output channels
     const int numCh      = mainBus.getNumChannels();
@@ -300,25 +338,27 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     const auto charModel = (gf::dsp::CharacterModel) juce::jlimit (0, 2, (int) characterParam->load());
 
     // 1) Wet generation: tempo-synced volume-shaper duck, or the compressor.
-    if (trigger == 2) // Tempo Duck
+    if (trigger == 2) // Tempo Duck — host-locked pump driven by the editable shape
     {
-        ducker.setParameters (duckDepthParam->load(),
-                              juce::jmap (duckCurveParam->load(), 0.0f, 1.0f, 0.3f, 4.0f));
+        const float  minGain  = juce::Decibels::decibelsToGain (-duckDepthParam->load());
         const double divBeats = gf::dsp::divisionBeats ((int) duckRateParam->load());
         ducker.setRate (bpm, divBeats);
         if (havePos)
             ducker.syncToPpq (ppq, divBeats); // re-lock to the host transport each block
 
         auto* const* w = mainBus.getArrayOfWritePointers();
-        float worst = 0.0f;
+        float worst = 0.0f, lastPhase = 0.0f;
         for (int n = 0; n < numSamples; ++n)
         {
-            const float g = ducker.processSample();
+            lastPhase = ducker.advance();
+            const float s = shapeLookup (lastPhase);          // 0 = ducked, 1 = open
+            const float g = minGain + (1.0f - minGain) * s;
             for (int ch = 0; ch < numCh; ++ch)
                 w[ch][n] *= g;
             worst = juce::jmin (worst, juce::Decibels::gainToDecibels (g, -100.0f));
         }
         grMeterDb.store (worst);
+        duckPhase.store (lastPhase);
     }
     else // Internal / External SC -> the compressor
     {
@@ -420,7 +460,10 @@ void GlueForgeProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
+        {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            rebuildShapeLut(); // state tree carries the shape; republish its LUT
+        }
 }
 
 juce::AudioProcessorEditor* GlueForgeProcessor::createEditor()
