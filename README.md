@@ -40,7 +40,7 @@ mastering control, parallel ("New York") compression, mid/side, multiband, and t
 pwsh scripts/build.ps1            # Release: VST3 + Standalone + Tests (MSVC + Ninja, auto-detected)
 ctest --test-dir build -C Release --output-on-failure   # DSP + state unit tests
 pwsh scripts/validate.ps1         # pluginval, strictness level 10 (downloads pluginval on first run)
-pwsh scripts/package.ps1          # dist/GlueForge-Windows-0.1.0.zip (+ installer if Inno Setup present)
+pwsh scripts/package.ps1          # dist/GlueForge-Windows-0.2.0.zip (+ installer if Inno Setup present)
 ```
 
 Artifacts: `build/GlueForge_artefacts/Release/VST3/GlueForge.vst3` and `.../Standalone/GlueForge.exe`.
@@ -60,7 +60,7 @@ source (e.g. the kick) to GlueForge's sidechain input and set **Trigger = Extern
   installs the VST3. Rescan in your DAW afterwards.
 - **From a release:** download the latest `GlueForge-Setup-*.exe` from the GitHub
   [Releases](https://github.com/3ggz/GlueForge/releases) page and run it.
-- **Cut a release:** `git tag v0.1.1 && git push origin v0.1.1` — GitHub Actions builds, tests,
+- **Cut a release:** `git tag v0.2.1 && git push origin v0.2.1` — GitHub Actions builds, tests,
   compiles the installer, and publishes it to Releases automatically.
 
 (An in-app "check for updates" is intentionally deferred to keep the plugin lightweight.)

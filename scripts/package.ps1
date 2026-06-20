@@ -3,7 +3,7 @@
 #   - dist/GlueForge-Setup-<version>.exe     (if Inno Setup's ISCC is installed)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$version = '0.1.0'
+$version = '0.2.0'
 
 Write-Host "=== Building Release ==="
 & (Join-Path $PSScriptRoot 'build.ps1') Release

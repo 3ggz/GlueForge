@@ -1,10 +1,10 @@
 ; Inno Setup script for GlueForge (Windows installer).
-; Build with:  ISCC GlueForge.iss /DMyVersion=0.1.0
+; Build with:  ISCC GlueForge.iss /DMyVersion=0.2.0
 ; Run scripts\package.ps1 first so dist\GlueForge-<version>\{VST3,Standalone} exist.
 
 #define MyAppName "GlueForge"
 #ifndef MyVersion
-  #define MyVersion "0.1.0"
+  #define MyVersion "0.2.0"
 #endif
 
 [Setup]
