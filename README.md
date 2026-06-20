@@ -9,6 +9,8 @@ mastering control, parallel ("New York") compression, mid/side, multiband, and t
 > AU / Logic / macOS code-signing are deferred to a later Mac bring-up session — the code is kept
 > cross-platform (AU is declared in CMake), so that becomes a rebuild, not a rewrite.
 > Design + roadmap: `docs/superpowers/specs/2026-06-18-glueforge-compressor-design.md`.
+> Working in this repo? Read **`AGENTS.md`** (build quirks, RT-safety rules, gotchas) and
+> **`docs/engineering-log.md`** (decisions over time).
 
 ## Features
 
