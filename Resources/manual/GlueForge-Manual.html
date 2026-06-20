@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GlueForge — User Manual</title>
+<style>
+  :root{
+    --bg:#13151b; --panel:#1b1e27; --panel2:#222634; --line:#2c313f;
+    --text:#e7e9f0; --dim:#9aa0b4; --faint:#6b7286;
+    --accent:#4fd6be;  /* teal */
+    --blue:#7aa2f7;    /* band/secondary */
+    --amber:#f6c177;   /* warm accent */
+    --red:#f7768e;
+  }
+  *{ box-sizing:border-box; }
+  @page{ size:A4; margin:0; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Segoe UI",-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    font-size:10.5pt; line-height:1.55;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .pad{ padding:15mm 16mm; }
+  h1,h2,h3,h4{ margin:0 0 .4em; line-height:1.2; font-weight:700; }
+  h2{
+    font-size:19pt; color:var(--text); margin-top:0;
+    padding-bottom:.25em; border-bottom:2px solid var(--accent);
+    break-after:avoid;
+  }
+  h2 .num{ color:var(--accent); font-variant-numeric:tabular-nums; margin-right:.5em; }
+  h3{ font-size:12.5pt; color:var(--accent); margin-top:1.4em; break-after:avoid; }
+  h4{ font-size:10.5pt; color:var(--blue); margin-top:1em; }
+  p{ margin:.5em 0; }
+  a{ color:var(--accent); text-decoration:none; }
+  strong{ color:#fff; }
+  code,.kbd{
+    font-family:"Cascadia Code",Consolas,monospace; font-size:9.2pt;
+    background:var(--panel2); color:var(--accent); padding:.08em .4em; border-radius:4px;
+  }
+  ul,ol{ margin:.4em 0 .7em; padding-left:1.25em; }
+  li{ margin:.22em 0; }
+  .dim{ color:var(--dim); }
+
+  /* ---- cover ---- */
+  .cover{
+    height:297mm; display:flex; flex-direction:column; justify-content:center;
+    padding:0 22mm; position:relative;
+    background:
+      radial-gradient(1200px 500px at 18% 12%, rgba(79,214,190,.16), transparent 60%),
+      radial-gradient(1000px 480px at 92% 96%, rgba(122,162,247,.16), transparent 55%),
+      var(--bg);
+  }
+  .cover .logo{ display:flex; align-items:center; gap:18px; margin-bottom:30px; }
+  .cover .title{ font-size:52pt; font-weight:800; letter-spacing:-1.5px; line-height:1; }
+  .cover .title .gl{ color:var(--text); } .cover .title .forge{ color:var(--accent); }
+  .cover .tag{ font-size:15pt; color:var(--dim); margin-top:6px; max-width:150mm; }
+  .cover .meta{ position:absolute; bottom:24mm; left:22mm; right:22mm;
+    display:flex; justify-content:space-between; color:var(--faint); font-size:9.5pt;
+    border-top:1px solid var(--line); padding-top:10px; }
+  .pill{ display:inline-block; background:var(--panel2); border:1px solid var(--line);
+    color:var(--dim); border-radius:999px; padding:3px 12px; font-size:9pt; margin-right:8px; }
+  .cover .pills{ margin-top:26px; }
+
+  /* ---- layout helpers ---- */
+  section.page{ break-before:page; }
+  .lead{ font-size:11.5pt; color:var(--dim); margin:.2em 0 1.1em; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; break-inside:avoid;
+  }
+  .card h4{ margin-top:0; }
+  .card.accent{ border-left:3px solid var(--accent); }
+  .card.blue{ border-left:3px solid var(--blue); }
+  .card.amber{ border-left:3px solid var(--amber); }
+
+  .callout{
+    background:linear-gradient(180deg, rgba(79,214,190,.10), rgba(79,214,190,.03));
+    border:1px solid rgba(79,214,190,.35); border-radius:10px;
+    padding:11px 14px; margin:1em 0; break-inside:avoid;
+  }
+  .callout .lbl{ color:var(--accent); font-weight:700; font-size:9pt; letter-spacing:.08em; text-transform:uppercase; }
+  .callout.warn{ background:linear-gradient(180deg, rgba(246,193,119,.10), rgba(246,193,119,.03));
+    border-color:rgba(246,193,119,.4); }
+  .callout.warn .lbl{ color:var(--amber); }
+
+  /* ---- tables ---- */
+  table{ width:100%; border-collapse:collapse; margin:.6em 0 1em; font-size:9.6pt; break-inside:avoid; }
+  th{ text-align:left; color:var(--accent); font-size:8.6pt; letter-spacing:.06em; text-transform:uppercase;
+    border-bottom:1px solid var(--line); padding:6px 8px; }
+  td{ padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  tr:nth-child(even) td{ background:rgba(255,255,255,.018); }
+  td.p{ color:#fff; font-weight:600; white-space:nowrap; }
+  td.r{ color:var(--dim); white-space:nowrap; font-family:"Cascadia Code",Consolas,monospace; font-size:8.8pt; }
+
+  .toc{ columns:2; column-gap:26px; margin-top:1em; }
+  .toc a{ display:flex; justify-content:space-between; color:var(--text);
+    padding:5px 0; border-bottom:1px dotted var(--line); break-inside:avoid; }
+  .toc a .n{ color:var(--accent); font-weight:700; margin-right:10px; }
+  .toc a .pg{ color:var(--faint); }
+
+  .step{ counter-reset:none; }
+  .swatch{ display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:middle; }
+  .foot{ margin-top:14mm; padding-top:8px; border-top:1px solid var(--line); color:var(--faint); font-size:8.5pt;
+    display:flex; justify-content:space-between; }
+  .badge{ font-size:8pt; color:var(--bg); background:var(--accent); border-radius:5px; padding:1px 7px; font-weight:700; }
+</style>
+</head>
+<body>
+
+<!-- ===================== COVER ===================== -->
+<div class="cover">
+  <div class="logo">
+    <svg width="74" height="74" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3" y="3" width="94" height="94" rx="22" fill="#1b1e27" stroke="#2c313f" stroke-width="2"/>
+      <path d="M16 64 C 34 64, 36 30, 50 30 C 64 30, 66 64, 84 64" stroke="#4fd6be" stroke-width="5" stroke-linecap="round" fill="none"/>
+      <path d="M16 74 C 34 74, 36 48, 50 48 C 64 48, 66 74, 84 74" stroke="#7aa2f7" stroke-width="3.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+      <circle cx="50" cy="30" r="4.5" fill="#4fd6be"/>
+    </svg>
+    <div>
+      <div class="title"><span class="gl">Glue</span><span class="forge">Forge</span></div>
+    </div>
+  </div>
+  <div class="tag">A complete dynamics studio — bus glue, drum &amp; vocal control, mastering, multiband, mid/side, external sidechain, and a tempo-synced EDM pump with a hand-drawn shape.</div>
+  <div class="pills">
+    <span class="pill">VST3 &amp; Standalone</span>
+    <span class="pill">VCA · FET · Opto</span>
+    <span class="pill">3-band Multiband</span>
+    <span class="pill">Lookahead + Oversampling</span>
+  </div>
+  <div class="meta">
+    <span>User Manual · Version 0.2</span>
+    <span>Nightshift Audio</span>
+  </div>
+</div>
+
+<!-- ===================== TOC ===================== -->
+<section class="page"><div class="pad">
+  <h2><span class="num">—</span>Contents</h2>
+  <div class="toc">
+    <a href="#start"><span><span class="n">1</span>Quick Start</span><span class="pg">3</span></a>
+    <a href="#install"><span><span class="n">2</span>Installing &amp; Loading</span><span class="pg">3</span></a>
+    <a href="#tour"><span><span class="n">3</span>Interface Tour</span><span class="pg">4</span></a>
+    <a href="#dynamics"><span><span class="n">4</span>Dynamics</span><span class="pg">5</span></a>
+    <a href="#detector"><span><span class="n">5</span>Detector &amp; Output</span><span class="pg">6</span></a>
+    <a href="#sidechain"><span><span class="n">6</span>Sidechain</span><span class="pg">7</span></a>
+    <a href="#duck"><span><span class="n">7</span>Tempo Duck &amp; Pump Shape</span><span class="pg">8</span></a>
+    <a href="#character"><span><span class="n">8</span>Character &amp; Saturation</span><span class="pg">9</span></a>
+    <a href="#mix"><span><span class="n">9</span>Mix &amp; Quality</span><span class="pg">10</span></a>
+    <a href="#multiband"><span><span class="n">10</span>Multiband Tab</span><span class="pg">11</span></a>
+    <a href="#meter"><span><span class="n">11</span>Metering &amp; Displays</span><span class="pg">12</span></a>
+    <a href="#presets"><span><span class="n">12</span>Presets &amp; A/B</span><span class="pg">12</span></a>
+    <a href="#recipes"><span><span class="n">13</span>Recipes</span><span class="pg">13</span></a>
+    <a href="#ref"><span><span class="n">14</span>Parameter Reference</span><span class="pg">14</span></a>
+  </div>
+
+  <div class="callout" style="margin-top:30px">
+    <div class="lbl">New here?</div>
+    Click the <code>?</code> button in the plugin to toggle hover tooltips on every control, and the
+    <code>Manual</code> button to open this document any time. Jump to <strong>§1 Quick Start</strong> to make a sound in 60 seconds.
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>Nightshift Audio</span></div>
+</div></section>
+
+<!-- ===================== QUICK START ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="start"><span class="num">1</span>Quick Start</h2>
+  <p class="lead">Three ways in, depending on what you're reaching for.</p>
+
+  <div class="grid3">
+    <div class="card accent">
+      <h4>Glue a bus</h4>
+      <ol>
+        <li>Load on a drum or mix bus.</li>
+        <li><strong>Ratio</strong> 2:1, <strong>Knee</strong> soft.</li>
+        <li>Lower <strong>Threshold</strong> for 2–4&nbsp;dB GR.</li>
+        <li><strong>Attack</strong> 30&nbsp;ms, <strong>Release</strong> auto-feel (~150&nbsp;ms).</li>
+        <li><strong>Character = VCA</strong>. Done.</li>
+      </ol>
+    </div>
+    <div class="card blue">
+      <h4>EDM pump</h4>
+      <ol>
+        <li>Set <strong>Trigger = Tempo Duck</strong>.</li>
+        <li>Pick a <strong>Duck Rate</strong> (1/4).</li>
+        <li>Dial <strong>Depth</strong> to taste.</li>
+        <li>Shape the curve in the center display.</li>
+        <li>No sidechain track needed.</li>
+      </ol>
+    </div>
+    <div class="card amber">
+      <h4>Classic sidechain</h4>
+      <ol>
+        <li>Set <strong>Trigger = External SC</strong>.</li>
+        <li>Route the kick to GlueForge's sidechain input.</li>
+        <li>Fast <strong>Attack</strong>, medium <strong>Release</strong>.</li>
+        <li>Use <strong>SC HPF</strong> to ignore sub rumble.</li>
+        <li><strong>Listen</strong> to audition the trigger.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2 id="install" style="margin-top:34px"><span class="num">2</span>Installing &amp; Loading</h2>
+  <h3>Install</h3>
+  <p>Run <code>GlueForge-Setup-x.y.z.exe</code>. It places the VST3 in
+  <code>C:\Program Files\Common Files\VST3</code> (where every DAW scans) and, optionally, the standalone app.</p>
+  <h3>Load in Ableton Live</h3>
+  <ol>
+    <li>Open <strong>Preferences → Plug-Ins</strong> and make sure <strong>Use VST3 System Folders</strong> is on, then <strong>Rescan</strong>.</li>
+    <li>Find <strong>GlueForge</strong> under <em>Plug-Ins → Nightshift Audio</em> and drop it on a track.</li>
+  </ol>
+  <div class="callout warn">
+    <div class="lbl">After an update</div>
+    A running DAW keeps the old plug-in cached in memory. Fully <strong>quit and relaunch</strong> your DAW,
+    then delete and re-add the instance to load the new version.
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§1–2 · Quick Start &amp; Install</span></div>
+</div></section>
+
+<!-- ===================== TOUR ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="tour"><span class="num">3</span>Interface Tour</h2>
+  <p class="lead">Two tabs share one window: <strong>Compressor</strong> (the main engine) and <strong>Multiband</strong> (three independent bands).</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>Top bar</h4>
+      <ul>
+        <li><strong>Preset menu</strong> + <code>&lt;</code>&nbsp;<code>&gt;</code> to step through factory presets.</li>
+        <li><strong>Save / Load</strong> your own presets as <code>.xml</code> files.</li>
+        <li><strong>A / B</strong> hold two full settings; <strong>A&gt;B</strong> copies one into the other.</li>
+        <li><strong>Bypass</strong> the whole plug-in.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Tabs row</h4>
+      <ul>
+        <li><strong>COMPRESSOR</strong> / <strong>MULTIBAND</strong> switch the body.</li>
+        <li><span class="kbd">?</span> toggles <strong>hover help</strong> on every control.</li>
+        <li><span class="kbd">Manual</span> opens this PDF in your system viewer.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>The compressor page at a glance</h3>
+  <table>
+    <tr><th>Zone</th><th>What it shows</th></tr>
+    <tr><td class="p">Meters (IN · GR · OUT)</td><td>Input level, gain reduction, and output level — peak-reading with a 36&nbsp;dB scale.</td></tr>
+    <tr><td class="p">Center display</td><td>The <strong>transfer curve</strong> with a live operating dot — or, in Tempo Duck mode, the editable <strong>pump shape</strong>.</td></tr>
+    <tr><td class="p">GR history</td><td>A scrolling graph of gain reduction over time, so you can see the compressor breathe.</td></tr>
+    <tr><td class="p">Control rows</td><td>Five grouped sections: Dynamics · Detector/Output · Sidechain · Tempo&nbsp;Duck/Character · Mix/Quality.</td></tr>
+  </table>
+
+  <div class="callout">
+    <div class="lbl">Tip</div>
+    Knobs respond to <strong>vertical or horizontal drag</strong>. Double-click a knob to type a value, and
+    hold <strong>Ctrl</strong> (Cmd on Mac) for fine adjustment.
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§3 · Interface Tour</span></div>
+</div></section>
+
+<!-- ===================== DYNAMICS ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="dynamics"><span class="num">4</span>Dynamics</h2>
+  <p class="lead">The core compressor: when it grabs, how hard, how fast, and how it lets go.</p>
+
+  <table>
+    <tr><th>Control</th><th>Range</th><th>What it does</th></tr>
+    <tr><td class="p">Threshold</td><td class="r">−60…0 dB</td><td>Level above which compression begins. Lower it for more gain reduction.</td></tr>
+    <tr><td class="p">Ratio</td><td class="r">1:1…20:1</td><td>How hard signal above threshold is reduced. 2:1 = gentle glue, 4:1 = control, 10:1+ = limiting.</td></tr>
+    <tr><td class="p">Knee</td><td class="r">0…24 dB</td><td>Width of the soft transition around the threshold. Higher = smoother, more gradual onset.</td></tr>
+    <tr><td class="p">Attack</td><td class="r">0.05…200 ms</td><td>How fast it clamps once over threshold. Fast catches transients; slow lets punch through.</td></tr>
+    <tr><td class="p">Release</td><td class="r">5…2000 ms</td><td>How fast it recovers after the signal drops. Short = pumpy/energetic, long = smooth/transparent.</td></tr>
+    <tr><td class="p">Hold</td><td class="r">0…500 ms</td><td>Keeps full reduction for a set time before release begins — steadies fast, choppy material.</td></tr>
+  </table>
+
+  <div class="grid2">
+    <div class="card accent">
+      <h4>Attack &amp; release, intuitively</h4>
+      <p>Short attack tames spikes but dulls punch. Long attack preserves the initial hit and compresses the body.
+      Short release adds energy and "pump"; long release is invisible and gluey. When in doubt, start at
+      <strong>10&nbsp;ms / 120&nbsp;ms</strong> and adjust by ear while watching the GR meter.</p>
+    </div>
+    <div class="card blue">
+      <h4>Reading the transfer curve</h4>
+      <p>The diagonal line is your in→out mapping. Below threshold it's 1:1 (45°); above it bends by the ratio,
+      rounded by the knee. The moving dot is the <strong>live operating point</strong> — where your signal sits
+      on the curve right now.</p>
+    </div>
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§4 · Dynamics</span></div>
+</div></section>
+
+<!-- ===================== DETECTOR / OUTPUT ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="detector"><span class="num">5</span>Detector &amp; Output</h2>
+  <p class="lead">How the compressor measures level, and how you make up the loss.</p>
+
+  <table>
+    <tr><th>Control</th><th>Range</th><th>What it does</th></tr>
+    <tr><td class="p">Detect</td><td class="r">Peak…RMS</td><td>Blends between fast <strong>Peak</strong> (transient-accurate) and <strong>RMS</strong> (loudness-like, smoother). Default 20% RMS.</td></tr>
+    <tr><td class="p">Max GR</td><td class="r">0…60 dB / Off</td><td>Caps the maximum gain reduction so the compressor can't clamp past a set amount. <strong>Off</strong> = unlimited.</td></tr>
+    <tr><td class="p">Link</td><td class="r">0…100%</td><td>Stereo linking. 100% = both channels share one detector (stable image); 0% = fully independent (dual-mono).</td></tr>
+    <tr><td class="p">Makeup</td><td class="r">−12…+24 dB</td><td>Manual gain to compensate for the level lost to compression.</td></tr>
+    <tr><td class="p">Output</td><td class="r">−24…+24 dB</td><td>Final output trim, after everything.</td></tr>
+    <tr><td class="p">Auto</td><td class="r">on/off</td><td>Auto-makeup: estimates and applies makeup gain automatically as you change threshold/ratio.</td></tr>
+  </table>
+
+  <div class="callout">
+    <div class="lbl">Gain staging</div>
+    Use <strong>Auto</strong> for quick level-matched A/B while dialing settings, then switch it off and set
+    <strong>Makeup</strong>/<strong>Output</strong> by ear for the final balance. Level-matched comparisons keep
+    "louder" from fooling you into "better".
+  </div>
+
+  <h3>Peak vs RMS, in practice</h3>
+  <div class="grid2">
+    <div class="card">
+      <h4>Toward Peak</h4>
+      <p class="dim">Catches every transient. Great for limiting, drum control, and anything where the spikes are the problem.</p>
+    </div>
+    <div class="card">
+      <h4>Toward RMS</h4>
+      <p class="dim">Responds to average loudness like the ear does. Smoother, more musical glue on busses, vocals, and masters.</p>
+    </div>
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§5 · Detector &amp; Output</span></div>
+</div></section>
+
+<!-- ===================== SIDECHAIN ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="sidechain"><span class="num">6</span>Sidechain</h2>
+  <p class="lead">The <strong>Trigger</strong> selector decides what drives the compressor.</p>
+
+  <table>
+    <tr><th>Trigger mode</th><th>What drives compression</th></tr>
+    <tr><td class="p">Internal</td><td>The track's own signal (a normal compressor).</td></tr>
+    <tr><td class="p">External SC</td><td>An external source routed to the plug-in's sidechain input — classic ducking (e.g. kick ducks bass).</td></tr>
+    <tr><td class="p">Tempo Duck</td><td>A host-synced internal pump — no external track needed (see §7).</td></tr>
+  </table>
+
+  <h3>Detector filters</h3>
+  <table>
+    <tr><th>Control</th><th>Range</th><th>What it does</th></tr>
+    <tr><td class="p">SC HPF</td><td class="r">20…2000 Hz</td><td>High-pass on the <em>detection</em> signal. Raise it so deep bass doesn't trigger reduction (the audio stays full-range).</td></tr>
+    <tr><td class="p">SC LPF</td><td class="r">200 Hz…20 kHz</td><td>Low-pass on the detection signal. Lower it to make the compressor ignore highs/sibilance.</td></tr>
+    <tr><td class="p">Listen</td><td class="r">on/off</td><td>Audition the (filtered) detection signal so you can hear exactly what the compressor reacts to.</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <div class="lbl">Routing in Ableton</div>
+    On the track with GlueForge, the sidechain source is selected in your DAW's plug-in sidechain dropdown.
+    In Ableton, expand the device's title bar <strong>Sidechain</strong> section and pick the kick (or other source)
+    as the audio-from input, then set <strong>Trigger = External SC</strong>.
+  </div>
+
+  <div class="card accent">
+    <h4>De-essing trick</h4>
+    <p>Set <strong>Trigger = External SC</strong> (or Internal), push <strong>SC HPF</strong> up around 4–6&nbsp;kHz, fast
+    <strong>Attack</strong>, and the compressor will react mainly to sibilance — a quick, surgical de-esser.</p>
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§6 · Sidechain</span></div>
+</div></section>
+
+<!-- ===================== TEMPO DUCK ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="duck"><span class="num">7</span>Tempo Duck &amp; the Pump-Shape Editor</h2>
+  <p class="lead">Set <strong>Trigger = Tempo Duck</strong> and the center display becomes a drawable pump shape, locked to your host tempo.</p>
+
+  <table>
+    <tr><th>Control</th><th>Range</th><th>What it does</th></tr>
+    <tr><td class="p">Duck Rate</td><td class="r">note divisions</td><td>The cycle length of one pump, synced to the project tempo (e.g. 1/4, 1/8, dotted, triplet).</td></tr>
+    <tr><td class="p">Depth</td><td class="r">0…36 dB</td><td>How deep each pump dips at its lowest point.</td></tr>
+  </table>
+
+  <h3>Editing the shape</h3>
+  <div class="grid3">
+    <div class="card accent"><h4>Move</h4><p class="dim">Drag any node to reposition it in time (x) and level (y).</p></div>
+    <div class="card blue"><h4>Bend</h4><p class="dim">Drag the <em>body of a segment</em> (between two nodes) to curve it — from linear to sharp exponential.</p></div>
+    <div class="card amber"><h4>Add / Remove</h4><p class="dim">Double-click empty space to add a node; double-click a node to delete it.</p></div>
+  </div>
+
+  <p>The shape is one tempo cycle, looping. The left edge is the start of the beat (deepest duck for a classic
+  sidechain feel), recovering back to full level by the right edge. Curved segments give you the snappy,
+  exponential "breathe" that linear ramps can't.</p>
+
+  <div class="callout">
+    <div class="lbl">Carried everywhere</div>
+    The pump shape travels with your project, with each <strong>preset</strong>, and with <strong>A/B</strong> —
+    so a custom curve is never lost.
+  </div>
+
+  <div class="card">
+    <h4>Why Tempo Duck instead of a real sidechain?</h4>
+    <p class="dim">It's tighter and repeatable: no need to route a ghost kick, no level drift, and the exact shape is
+    yours to draw. Perfect for EDM/pop pumping on pads, bass, and whole busses.</p>
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§7 · Tempo Duck</span></div>
+</div></section>
+
+<!-- ===================== CHARACTER ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="character"><span class="num">8</span>Character &amp; Saturation</h2>
+  <p class="lead">Three classic compressor "flavours", plus a saturation stage for colour and harmonics.</p>
+
+  <div class="grid3">
+    <div class="card accent">
+      <h4><span class="swatch" style="background:var(--accent)"></span>VCA</h4>
+      <p class="dim">Clean, fast, punchy and transparent. The modern bus-glue sound — controlled and tight without
+      obvious colouration.</p>
+    </div>
+    <div class="card amber">
+      <h4><span class="swatch" style="background:var(--amber)"></span>FET</h4>
+      <p class="dim">Aggressive and quick with a forward, harmonically rich edge. Excellent on drums, room mics,
+      and vocals that need attitude.</p>
+    </div>
+    <div class="card blue">
+      <h4><span class="swatch" style="background:var(--blue)"></span>Opto</h4>
+      <p class="dim">Smooth and program-dependent — the gentle, rounded behaviour of a light-based compressor.
+      Beautiful on vocals, bass, and master glue.</p>
+    </div>
+  </div>
+
+  <h3>Saturation</h3>
+  <table>
+    <tr><th>Control</th><th>Range</th><th>What it does</th></tr>
+    <tr><td class="p">Drive</td><td class="r">0…100%</td><td>How hard the signal is pushed into the character stage — more harmonics, more density.</td></tr>
+    <tr><td class="p">Sat Mix</td><td class="r">0…100%</td><td>Blends the saturated signal back in. 0% = clean dynamics only; raise for warmth and weight.</td></tr>
+  </table>
+
+  <div class="callout">
+    <div class="lbl">Subtle is plenty</div>
+    A little goes a long way. Try <strong>Drive 30%</strong> with <strong>Sat Mix 15–25%</strong> for analog-style
+    glue that you feel more than hear.
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§8 · Character &amp; Saturation</span></div>
+</div></section>
+
+<!-- ===================== MIX / QUALITY ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="mix"><span class="num">9</span>Mix &amp; Quality</h2>
+  <p class="lead">Parallel blend, mid/side processing, and the precision controls.</p>
+
+  <table>
+    <tr><th>Control</th><th>Range</th><th>What it does</th></tr>
+    <tr><td class="p">Mix</td><td class="r">0…100%</td><td>Dry/wet blend for <strong>parallel compression</strong>. Keep transients (dry) while adding compressed body (wet).</td></tr>
+    <tr><td class="p">Look</td><td class="r">0…10 ms</td><td>Lookahead — lets the compressor "see" transients early for cleaner catching. Reported to the host as latency (PDC).</td></tr>
+    <tr><td class="p">OS</td><td class="r">Off · 2× · 4× · 8×</td><td>Oversampling reduces aliasing from fast compression and saturation. Higher = cleaner, more CPU. Adds latency (PDC).</td></tr>
+    <tr><td class="p">M/S</td><td class="r">on/off</td><td>Process <strong>Mid/Side</strong> instead of Left/Right — compress the center and sides independently of each other.</td></tr>
+  </table>
+
+  <div class="grid2">
+    <div class="card accent">
+      <h4>Parallel (New York) compression</h4>
+      <p class="dim">Crush hard — low threshold, high ratio, fast attack — then pull <strong>Mix</strong> back to ~30–50%.
+      You get the power of heavy compression with the life of the untouched signal.</p>
+    </div>
+    <div class="card blue">
+      <h4>Mid/Side on a master</h4>
+      <p class="dim">Enable <strong>M/S</strong> to glue the center (vocals, kick, bass) without squashing the stereo
+      sides — or vice-versa. Pairs well with the Multiband tab.</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="lbl">Latency</div>
+    Lookahead and oversampling add latency, which GlueForge reports to your DAW for automatic delay compensation.
+    For tracking/live monitoring, keep both at their lowest.
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§9 · Mix &amp; Quality</span></div>
+</div></section>
+
+<!-- ===================== MULTIBAND ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="multiband"><span class="num">10</span>Multiband Tab</h2>
+  <p class="lead">Split the signal into <strong>Low · Mid · High</strong> and compress each independently — with an EQ-style display you can drag.</p>
+
+  <h3>The display</h3>
+  <ul>
+    <li>Log-frequency graph from 20&nbsp;Hz to 20&nbsp;kHz with three shaded band regions.</li>
+    <li><strong>Drag the crossover lines</strong> to set where bands split.</li>
+    <li>Each band shows a <strong>live gain-reduction shelf</strong> — it visibly dips by how hard that band is compressing.</li>
+  </ul>
+
+  <table>
+    <tr><th>Control</th><th>Range</th><th>What it does</th></tr>
+    <tr><td class="p">Multiband ON</td><td class="r">on/off</td><td>Switches the engine from single-band to 3-band multiband.</td></tr>
+    <tr><td class="p">X Low</td><td class="r">30…1000 Hz</td><td>Low|Mid crossover frequency (also draggable on the graph).</td></tr>
+    <tr><td class="p">X High</td><td class="r">1…16 kHz</td><td>Mid|High crossover frequency (also draggable on the graph).</td></tr>
+    <tr><td class="p">Solo</td><td class="r">None/Low/Mid/High</td><td>Hear one band on its own to dial it in.</td></tr>
+    <tr><td class="p">Thr / Ratio (per band)</td><td class="r">−60…0 dB / 1…20:1</td><td>Independent threshold and ratio for each band.</td></tr>
+    <tr><td class="p">Trim (per band)</td><td class="r">−24…+24 dB</td><td>Per-band output level after compression — a built-in tonal balance.</td></tr>
+    <tr><td class="p">Bypass (per band)</td><td class="r">on/off</td><td>Skip compression on a band while keeping it in the mix.</td></tr>
+  </table>
+
+  <div class="callout">
+    <div class="lbl">Crossovers reconstruct flat</div>
+    GlueForge uses Linkwitz-Riley crossovers with allpass compensation, so with no compression the three bands sum
+    back to the original signal — no phasey comb-filtering at the splits.
+  </div>
+
+  <div class="card accent">
+    <h4>Common multiband moves</h4>
+    <p class="dim">Tame a boomy low end (compress <strong>Low</strong> only), de-harsh a bright mix (gentle <strong>High</strong>),
+    or control a vocal's body without dulling air (compress <strong>Mid</strong>, leave <strong>High</strong> open).</p>
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§10 · Multiband</span></div>
+</div></section>
+
+<!-- ===================== METERING / PRESETS ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="meter"><span class="num">11</span>Metering &amp; Displays</h2>
+  <div class="grid3">
+    <div class="card"><h4>IN / OUT</h4><p class="dim">Peak input and output levels on a 36&nbsp;dB scale. Watch OUT to keep your gain staging in check.</p></div>
+    <div class="card"><h4>GR meter</h4><p class="dim">How much the compressor is pulling down right now, in dB. Aim for musical amounts — often 2–6&nbsp;dB for glue.</p></div>
+    <div class="card"><h4>GR history</h4><p class="dim">A scrolling timeline of gain reduction so you can see the rhythm of the compression, not just the peak.</p></div>
+  </div>
+
+  <h2 id="presets" style="margin-top:30px"><span class="num">12</span>Presets &amp; A/B</h2>
+  <h3>Presets</h3>
+  <p>Factory presets are grouped by category in the menu; step through them with <code>&lt;</code> and <code>&gt;</code>.
+  <strong>Save</strong> writes your current settings (including the pump shape) to an <code>.xml</code> file under
+  <code>Documents\Nightshift Audio\GlueForge\Presets</code>; <strong>Load</strong> recalls one.</p>
+  <h3>A/B compare</h3>
+  <p><strong>A</strong> and <strong>B</strong> are two independent snapshots of every parameter. Tweak under A, click
+  <strong>B</strong> to branch a variation, and flip between them to compare. <strong>A&gt;B</strong> copies the current
+  slot into the other so you can start a variation from where you are.</p>
+
+  <div class="callout">
+    <div class="lbl">Everything is state</div>
+    Presets, A/B, and your DAW's project all capture the full plug-in state — knobs, tabs, multiband, and the
+    hand-drawn pump shape alike.
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§11–12 · Metering, Presets &amp; A/B</span></div>
+</div></section>
+
+<!-- ===================== RECIPES ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="recipes"><span class="num">13</span>Recipes</h2>
+  <p class="lead">Starting points, not rules. Trust your ears and the GR meter.</p>
+
+  <div class="grid2">
+    <div class="card accent">
+      <h4>Drum bus glue</h4>
+      <p class="dim">VCA · Ratio 2–4:1 · Attack 20–30&nbsp;ms (let the snap through) · Release ~150&nbsp;ms · 3–5&nbsp;dB GR ·
+      a touch of Drive.</p>
+    </div>
+    <div class="card blue">
+      <h4>Lead vocal</h4>
+      <p class="dim">Opto · Ratio 3:1 · soft Knee · Attack 5–10&nbsp;ms · Release 80–150&nbsp;ms · Detect toward RMS ·
+      Max&nbsp;GR ~6&nbsp;dB to keep it natural.</p>
+    </div>
+    <div class="card amber">
+      <h4>Parallel drum smash</h4>
+      <p class="dim">FET · low Threshold · Ratio 10:1 · fast Attack · fast Release · then <strong>Mix ~35%</strong>.</p>
+    </div>
+    <div class="card accent">
+      <h4>Mix-bus master glue</h4>
+      <p class="dim">VCA or Opto · Ratio 2:1 · Knee high · Attack 30&nbsp;ms · Release auto-feel · 1–2&nbsp;dB GR ·
+      consider <strong>M/S</strong> + light Multiband.</p>
+    </div>
+    <div class="card blue">
+      <h4>EDM pump (no sidechain)</h4>
+      <p class="dim">Trigger Tempo&nbsp;Duck · Rate 1/4 · Depth to taste · draw a fast-down / curved-up shape ·
+      apply to pads, bass, and busses.</p>
+    </div>
+    <div class="card amber">
+      <h4>Boom control</h4>
+      <p class="dim">Multiband ON · compress <strong>Low</strong> only · raise X&nbsp;Low to ~150&nbsp;Hz · gentle ratio ·
+      leave Mid/High bypassed.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <div class="lbl">Golden rule</div>
+    Set it, then <strong>bypass</strong> and compare at matched loudness. If the bypassed version sounds better,
+    back off. Compression should serve the song, not the meter.
+  </div>
+
+  <div class="foot"><span>GlueForge User Manual</span><span>§13 · Recipes</span></div>
+</div></section>
+
+<!-- ===================== REFERENCE ===================== -->
+<section class="page"><div class="pad">
+  <h2 id="ref"><span class="num">14</span>Parameter Reference</h2>
+  <p class="lead">Every parameter, its range, and default.</p>
+
+  <h3>Compressor</h3>
+  <table>
+    <tr><th>Parameter</th><th>Range</th><th>Default</th></tr>
+    <tr><td class="p">Threshold</td><td class="r">−60…0 dB</td><td class="r">−18 dB</td></tr>
+    <tr><td class="p">Ratio</td><td class="r">1:1…20:1</td><td class="r">4:1</td></tr>
+    <tr><td class="p">Knee</td><td class="r">0…24 dB</td><td class="r">6 dB</td></tr>
+    <tr><td class="p">Attack</td><td class="r">0.05…200 ms</td><td class="r">10 ms</td></tr>
+    <tr><td class="p">Release</td><td class="r">5…2000 ms</td><td class="r">120 ms</td></tr>
+    <tr><td class="p">Hold</td><td class="r">0…500 ms</td><td class="r">0 ms</td></tr>
+    <tr><td class="p">Detect</td><td class="r">Peak…RMS</td><td class="r">20% RMS</td></tr>
+    <tr><td class="p">Max GR</td><td class="r">0…60 dB / Off</td><td class="r">Off</td></tr>
+    <tr><td class="p">Link</td><td class="r">0…100%</td><td class="r">100%</td></tr>
+    <tr><td class="p">Makeup</td><td class="r">−12…+24 dB</td><td class="r">0 dB</td></tr>
+    <tr><td class="p">Auto Makeup</td><td class="r">on/off</td><td class="r">off</td></tr>
+    <tr><td class="p">Output</td><td class="r">−24…+24 dB</td><td class="r">0 dB</td></tr>
+  </table>
+
+  <div class="grid2">
+    <div>
+      <h3>Sidechain &amp; Duck</h3>
+      <table>
+        <tr><th>Parameter</th><th>Range / Default</th></tr>
+        <tr><td class="p">Trigger</td><td class="r">Int / Ext SC / Duck · Int</td></tr>
+        <tr><td class="p">SC HPF</td><td class="r">20…2000 Hz · 20</td></tr>
+        <tr><td class="p">SC LPF</td><td class="r">200…20k Hz · 20k</td></tr>
+        <tr><td class="p">Listen</td><td class="r">on/off · off</td></tr>
+        <tr><td class="p">Duck Rate</td><td class="r">divisions · 1/4</td></tr>
+        <tr><td class="p">Depth</td><td class="r">0…36 dB · 12</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Character &amp; Quality</h3>
+      <table>
+        <tr><th>Parameter</th><th>Range / Default</th></tr>
+        <tr><td class="p">Character</td><td class="r">VCA/FET/Opto · VCA</td></tr>
+        <tr><td class="p">Drive</td><td class="r">0…100% · 30%</td></tr>
+        <tr><td class="p">Sat Mix</td><td class="r">0…100% · 0%</td></tr>
+        <tr><td class="p">Mix</td><td class="r">0…100% · 100%</td></tr>
+        <tr><td class="p">Lookahead</td><td class="r">0…10 ms · 0</td></tr>
+        <tr><td class="p">Oversampling</td><td class="r">Off/2×/4×/8× · Off</td></tr>
+        <tr><td class="p">Mid/Side</td><td class="r">on/off · off</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h3>Multiband</h3>
+  <table>
+    <tr><th>Parameter</th><th>Range</th><th>Default</th></tr>
+    <tr><td class="p">Multiband</td><td class="r">on/off</td><td class="r">off</td></tr>
+    <tr><td class="p">X Low / X High</td><td class="r">30…1000 Hz / 1…16 kHz</td><td class="r">200 Hz / 2.5 kHz</td></tr>
+    <tr><td class="p">Per-band Thr</td><td class="r">−60…0 dB</td><td class="r">−18 dB</td></tr>
+    <tr><td class="p">Per-band Ratio</td><td class="r">1…20:1</td><td class="r">4:1</td></tr>
+    <tr><td class="p">Per-band Trim</td><td class="r">−24…+24 dB</td><td class="r">0 dB</td></tr>
+    <tr><td class="p">Solo</td><td class="r">None/Low/Mid/High</td><td class="r">None</td></tr>
+  </table>
+
+  <div class="foot">
+    <span><span class="badge">GlueForge</span> &nbsp;by Nightshift Audio</span>
+    <span>User Manual · v0.2 · © Nightshift Audio</span>
+  </div>
+</div></section>
+
+</body>
+</html>

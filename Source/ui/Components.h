@@ -9,7 +9,7 @@
 namespace gf::ui
 {
     /** Vertical peak level meter (-60..0 dB), instant rise / smooth fall. */
-    class LevelMeter : public juce::Component
+    class LevelMeter : public juce::Component, public juce::SettableTooltipClient
     {
     public:
         void setLevelDb (float db)
@@ -31,7 +31,7 @@ namespace gf::ui
     };
 
     /** Gain-reduction meter — grows downward from the top (0..30 dB). */
-    class GrMeter : public juce::Component
+    class GrMeter : public juce::Component, public juce::SettableTooltipClient
     {
     public:
         void setReductionDb (float grDb)
@@ -53,7 +53,7 @@ namespace gf::ui
     };
 
     /** Static transfer curve (threshold/ratio/knee) with a live operating point. */
-    class TransferCurveComponent : public juce::Component
+    class TransferCurveComponent : public juce::Component, public juce::SettableTooltipClient
     {
     public:
         void setParams (float t, float r, float k) { thr_ = t; ratio_ = r; knee_ = k; }
@@ -106,7 +106,7 @@ namespace gf::ui
     };
 
     /** Scrolling gain-reduction history. */
-    class GrHistoryComponent : public juce::Component
+    class GrHistoryComponent : public juce::Component, public juce::SettableTooltipClient
     {
     public:
         GrHistoryComponent() { hist_.fill (0.0f); }

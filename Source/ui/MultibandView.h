@@ -16,19 +16,24 @@ namespace gf::ui
         Below it, one control column per band (threshold / ratio / trim / bypass),
         plus the global enable + solo.
     */
-    class MultibandView : public juce::Component
+    class MultibandView : public juce::Component, public juce::SettableTooltipClient
     {
     public:
         explicit MultibandView (GlueForgeProcessor& p) : proc (p)
         {
             using namespace gf::params;
 
+            setTooltip ("Drag the crossover lines to set where the Low/Mid/High bands split. "
+                        "Each band's shelf dips by how hard that band is compressing right now.");
+
             enableBtn.setButtonText ("Multiband ON");
+            enableBtn.setTooltip ("Switch from single-band to 3-band multiband processing.");
             addAndMakeVisible (enableBtn);
             enableAtt = std::make_unique<ButtonAtt> (proc.apvts, id::mbEnable, enableBtn);
 
             if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (proc.apvts.getParameter (id::mbSolo)))
             { int i = 1; for (auto& c : cp->choices) soloBox.addItem (c, i++); }
+            soloBox.setTooltip ("Solo one band to hear it on its own while you dial it in.");
             addAndMakeVisible (soloBox);
             soloAtt = std::make_unique<ComboAtt> (proc.apvts, id::mbSolo, soloBox);
             soloLabel.setText ("Solo", juce::dontSendNotification);
@@ -40,13 +45,19 @@ namespace gf::ui
             const char* ratId[3]  { id::mbRatio1,  id::mbRatio2,  id::mbRatio3 };
             const char* trimId[3] { id::mbTrim1,   id::mbTrim2,   id::mbTrim3 };
             const char* bypId[3]  { id::mbBypass1, id::mbBypass2, id::mbBypass3 };
+            const char* bandName[3] { "Low", "Mid", "High" };
 
             for (int b = 0; b < 3; ++b)
             {
+                const juce::String bn (bandName[b]);
                 setupRotary (thr[(size_t) b]);   thrA[(size_t) b]  = std::make_unique<SliderAtt> (proc.apvts, thrId[b],  thr[(size_t) b]);
                 setupRotary (ratio[(size_t) b]); ratioA[(size_t) b]= std::make_unique<SliderAtt> (proc.apvts, ratId[b],  ratio[(size_t) b]);
                 setupRotary (trim[(size_t) b]);  trimA[(size_t) b] = std::make_unique<SliderAtt> (proc.apvts, trimId[b], trim[(size_t) b]);
+                thr[(size_t) b]  .setTooltip (bn + " band threshold (dB): level above which this band compresses.");
+                ratio[(size_t) b].setTooltip (bn + " band ratio: how hard this band is compressed above its threshold.");
+                trim[(size_t) b] .setTooltip (bn + " band output trim (dB), after compression.");
                 byp[(size_t) b].setButtonText ("Bypass");
+                byp[(size_t) b].setTooltip ("Bypass compression on the " + bn + " band (it stays in the mix).");
                 addAndMakeVisible (byp[(size_t) b]);
                 bypA[(size_t) b] = std::make_unique<ButtonAtt> (proc.apvts, bypId[b], byp[(size_t) b]);
             }

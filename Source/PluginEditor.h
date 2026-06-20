@@ -6,6 +6,7 @@
 #include "ui/Presets.h"
 #include "ui/ShapeEditor.h"
 #include "ui/MultibandView.h"
+#include "ui/HelpTooltip.h"
 
 #include <map>
 #include <memory>
@@ -37,14 +38,15 @@ private:
 
     void timerCallback() override;
 
-    void addRotary (const juce::String& id, const juce::String& name);
-    void addCombo  (const juce::String& id, const juce::String& name);
-    void addToggle (const juce::String& id, const juce::String& name);
+    void addRotary (const juce::String& id, const juce::String& name, const juce::String& tip);
+    void addCombo  (const juce::String& id, const juce::String& name, const juce::String& tip);
+    void addToggle (const juce::String& id, const juce::String& name, const juce::String& tip);
     void layoutRow (juce::Rectangle<int> area, const juce::StringArray& ids);
 
     void rebuildPresetMenu();
     void savePresetToFile();
     void loadPresetFromFile();
+    void openManual();
 
     GlueForgeProcessor& proc;
     gf::ui::LookAndFeel lnf;
@@ -61,8 +63,11 @@ private:
 
     gf::ui::MultibandView mbView;                          // the Multiband tab
     juce::TextButton compTabBtn { "COMPRESSOR" }, mbTabBtn { "MULTIBAND" };
+    juce::TextButton helpBtn { "?" }, manualBtn { "Manual" }; // hover-help toggle + open PDF
     int currentTab = 0;                                   // 0 = compressor, 1 = multiband
     void showTab (int t);
+
+    gf::ui::HelpTooltipWindow tooltips { this };           // hover help (toggled by helpBtn)
 
     // Top bar
     juce::ComboBox  presetBox;

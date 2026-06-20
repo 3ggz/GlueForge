@@ -21,6 +21,7 @@ target_compile_definitions(GlueForgeTests PRIVATE
 
 target_link_libraries(GlueForgeTests PRIVATE
     Catch2::Catch2WithMain
+    GlueForgeData
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_recommended_config_flags

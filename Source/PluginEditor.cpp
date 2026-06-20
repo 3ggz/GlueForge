@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "ParamIDs.h"
+#include "BinaryData.h"
 
 using namespace gf;
 
@@ -16,6 +17,12 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     addAndMakeVisible (history);
     addAndMakeVisible (shapeEditor);
     shapeEditor.setVisible (false); // shown only in Tempo Duck mode
+
+    inMeter.setTooltip  ("Input level (peak), 36 dB scale.");
+    outMeter.setTooltip ("Output level (peak) after all processing.");
+    grMeter.setTooltip  ("Gain reduction right now, in dB. Aim for musical amounts (often 2-6 dB for glue).");
+    curve.setTooltip    ("Transfer curve: your in-to-out mapping. The moving dot is the live operating point.");
+    history.setTooltip  ("Gain-reduction history: a scrolling view of how the compressor breathes over time.");
     displayCaption.setJustificationType (juce::Justification::centredLeft);
     displayCaption.setFont (juce::FontOptions (10.0f));
     displayCaption.setColour (juce::Label::textColourId, ui::colours::dim);
@@ -40,12 +47,17 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
             proc.rebuildShapeLut(); // preset carries the pump shape
         }
     };
+    presetBox.setTooltip ("Factory presets, grouped by category.");
     addAndMakeVisible (presetBox);
 
     prevBtn.onClick = [this] { presetBox.setSelectedId (juce::jmax (1, presetBox.getSelectedId() - 1)); };
     nextBtn.onClick = [this] { presetBox.setSelectedId (juce::jmin ((int) presets.size(), presetBox.getSelectedId() + 1)); };
     saveBtn.onClick = [this] { savePresetToFile(); };
     loadBtn.onClick = [this] { loadPresetFromFile(); };
+    prevBtn.setTooltip ("Previous preset.");
+    nextBtn.setTooltip ("Next preset.");
+    saveBtn.setTooltip ("Save the current settings as a preset (.xml).");
+    loadBtn.setTooltip ("Load a preset (.xml) from disk.");
     for (auto* b : { &prevBtn, &nextBtn, &saveBtn, &loadBtn }) addAndMakeVisible (*b);
 
     // A/B compare
@@ -68,42 +80,46 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
         if (showingA) { storeCurrentInto (stateA); showingA = false; recall (stateB); }
     };
     copyBtn.onClick = [this] { (showingA ? stateB : stateA) = proc.apvts.copyState(); };
+    aBtn.setTooltip ("Recall snapshot A.");
+    bBtn.setTooltip ("Recall snapshot B.");
+    copyBtn.setTooltip ("Copy the current settings into the other A/B slot.");
     for (auto* b : { &aBtn, &bBtn, &copyBtn }) addAndMakeVisible (*b);
 
     bypassBtn.setButtonText ("Bypass");
+    bypassBtn.setTooltip ("Bypass the whole plug-in.");
     bypassAtt = std::make_unique<ButtonAtt> (proc.apvts, params::id::bypass, bypassBtn);
     addAndMakeVisible (bypassBtn);
 
-    // --- Controls ---
-    addRotary (params::id::threshold, "Thresh");
-    addRotary (params::id::ratio,     "Ratio");
-    addRotary (params::id::knee,      "Knee");
-    addRotary (params::id::attack,    "Attack");
-    addRotary (params::id::release,   "Release");
-    addRotary (params::id::hold,      "Hold");
+    // --- Controls (each carries a descriptive tooltip for the ? hover help) ---
+    addRotary (params::id::threshold, "Thresh",  "Level (dB) above which compression starts. Lower it for more gain reduction.");
+    addRotary (params::id::ratio,     "Ratio",   "How hard signal above the threshold is reduced. 2:1 gentle, 4:1 control, 10:1+ limiting.");
+    addRotary (params::id::knee,      "Knee",    "Width (dB) of the soft transition around the threshold. Higher = smoother onset.");
+    addRotary (params::id::attack,    "Attack",  "How fast (ms) it clamps once over threshold. Fast catches transients; slow lets punch through.");
+    addRotary (params::id::release,   "Release", "How fast (ms) it recovers after the signal drops. Short = pumpy, long = smooth.");
+    addRotary (params::id::hold,      "Hold",    "Holds full gain reduction (ms) before release begins. Steadies choppy material.");
 
-    addRotary (params::id::detector,  "Detect");
-    addRotary (params::id::range,     "Max GR");
-    addRotary (params::id::link,      "Link");
-    addRotary (params::id::makeup,    "Makeup");
-    addRotary (params::id::gain,      "Output");
-    addToggle (params::id::automakeup, "Auto");
+    addRotary (params::id::detector,  "Detect",  "Blends Peak (transient-accurate) toward RMS (loudness-like, smoother) detection.");
+    addRotary (params::id::range,     "Max GR",  "Caps the maximum gain reduction. Fully up = Off (unlimited).");
+    addRotary (params::id::link,      "Link",    "Stereo link: 100% = shared detector (stable image), 0% = independent per channel.");
+    addRotary (params::id::makeup,    "Makeup",  "Manual make-up gain (dB) to compensate for the level lost to compression.");
+    addRotary (params::id::gain,      "Output",  "Final output level trim (dB), after everything.");
+    addToggle (params::id::automakeup, "Auto",   "Auto make-up: applies estimated gain automatically as you change threshold/ratio.");
 
-    addCombo  (params::id::trigger,   "Trigger");
-    addRotary (params::id::scHpf,     "SC HPF");
-    addRotary (params::id::scLpf,     "SC LPF");
-    addToggle (params::id::scListen,  "Listen");
+    addCombo  (params::id::trigger,   "Trigger", "What drives compression: Internal, External Sidechain, or tempo-synced Duck.");
+    addRotary (params::id::scHpf,     "SC HPF",  "High-pass (Hz) on the detection signal. Raise so deep bass doesn't trigger ducking.");
+    addRotary (params::id::scLpf,     "SC LPF",  "Low-pass (Hz) on the detection signal. Lower to ignore highs/sibilance.");
+    addToggle (params::id::scListen,  "Listen",  "Audition the (filtered) detection signal the compressor reacts to.");
 
-    addCombo  (params::id::duckRate,  "Duck Rate");
-    addRotary (params::id::duckDepth, "Depth");
-    addCombo  (params::id::character, "Character");
-    addRotary (params::id::drive,     "Drive");
-    addRotary (params::id::satMix,    "Sat Mix");
-    addRotary (params::id::mix,       "Mix");
-    addRotary (params::id::lookahead, "Look");
-    addCombo  (params::id::oversampling, "OS");
+    addCombo  (params::id::duckRate,  "Duck Rate", "Tempo Duck cycle length, synced to the host tempo (e.g. 1/4, 1/8).");
+    addRotary (params::id::duckDepth, "Depth",   "How deep each tempo-duck pump dips (dB).");
+    addCombo  (params::id::character, "Character", "Compressor flavour: VCA (clean/punchy), FET (aggressive), Opto (smooth).");
+    addRotary (params::id::drive,     "Drive",   "How hard the signal is pushed into the character/saturation stage.");
+    addRotary (params::id::satMix,    "Sat Mix", "Blend of the saturated signal. 0% = clean; raise for warmth/harmonics.");
+    addRotary (params::id::mix,       "Mix",     "Dry/wet blend for parallel compression. 100% = fully compressed.");
+    addRotary (params::id::lookahead, "Look",    "Lookahead (ms) so transients are caught early. Adds reported latency (PDC).");
+    addCombo  (params::id::oversampling, "OS",   "Oversampling reduces aliasing from fast comp/saturation. Higher = cleaner, more CPU.");
 
-    addToggle (params::id::midside, "M/S");
+    addToggle (params::id::midside, "M/S",       "Process Mid/Side instead of Left/Right.");
 
     // Tabs (compressor / multiband) — the MB controls live in mbView.
     addAndMakeVisible (mbView);
@@ -117,6 +133,19 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     compTabBtn.setToggleState (true, juce::dontSendNotification);
     compTabBtn.onClick = [this] { showTab (0); };
     mbTabBtn.onClick   = [this] { showTab (1); };
+    compTabBtn.setTooltip ("Compressor page: the main single-band engine.");
+    mbTabBtn.setTooltip   ("Multiband page: three independent bands with an EQ-style display.");
+
+    // Hover-help toggle (?) + Manual button — always available on the tabs row.
+    helpBtn.setClickingTogglesState (true);
+    helpBtn.setToggleState (true, juce::dontSendNotification);
+    helpBtn.setTooltip ("Toggle hover help (tooltips) on every control.");
+    helpBtn.onClick = [this] { tooltips.setHelpEnabled (helpBtn.getToggleState()); };
+    addAndMakeVisible (helpBtn);
+
+    manualBtn.setTooltip ("Open the GlueForge user manual (PDF).");
+    manualBtn.onClick = [this] { openManual(); };
+    addAndMakeVisible (manualBtn);
 
     setResizable (true, true);
     setResizeLimits (900, 660, 1500, 1300);
@@ -153,11 +182,12 @@ GlueForgeEditor::~GlueForgeEditor()
     setLookAndFeel (nullptr);
 }
 
-void GlueForgeEditor::addRotary (const juce::String& id, const juce::String& name)
+void GlueForgeEditor::addRotary (const juce::String& id, const juce::String& name, const juce::String& tip)
 {
     auto r = std::make_unique<Rotary>();
     r->s.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     r->s.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 62, 15);
+    r->s.setTooltip (tip);
     addAndMakeVisible (r->s);
     r->l.setText (name, juce::dontSendNotification);
     r->l.setJustificationType (juce::Justification::centred);
@@ -168,7 +198,7 @@ void GlueForgeEditor::addRotary (const juce::String& id, const juce::String& nam
     rotaries[id] = std::move (r);
 }
 
-void GlueForgeEditor::addCombo (const juce::String& id, const juce::String& name)
+void GlueForgeEditor::addCombo (const juce::String& id, const juce::String& name, const juce::String& tip)
 {
     auto c = std::make_unique<Combo>();
     if (auto* cp = dynamic_cast<juce::AudioParameterChoice*> (proc.apvts.getParameter (id)))
@@ -176,6 +206,7 @@ void GlueForgeEditor::addCombo (const juce::String& id, const juce::String& name
         int i = 1;
         for (auto& choice : cp->choices) c->c.addItem (choice, i++);
     }
+    c->c.setTooltip (tip);
     addAndMakeVisible (c->c);
     c->l.setText (name, juce::dontSendNotification);
     c->l.setJustificationType (juce::Justification::centred);
@@ -186,10 +217,11 @@ void GlueForgeEditor::addCombo (const juce::String& id, const juce::String& name
     combos[id] = std::move (c);
 }
 
-void GlueForgeEditor::addToggle (const juce::String& id, const juce::String& name)
+void GlueForgeEditor::addToggle (const juce::String& id, const juce::String& name, const juce::String& tip)
 {
     auto t = std::make_unique<Toggle>();
     t->b.setButtonText (name);
+    t->b.setTooltip (tip);
     addAndMakeVisible (t->b);
     t->a = std::make_unique<ButtonAtt> (proc.apvts, id, t->b);
     toggles[id] = std::move (t);
@@ -297,6 +329,9 @@ void GlueForgeEditor::resized()
     compTabBtn.setBounds (tabs.removeFromLeft (120));
     tabs.removeFromLeft (4);
     mbTabBtn.setBounds (tabs.removeFromLeft (120));
+    helpBtn.setBounds (tabs.removeFromRight (30));
+    tabs.removeFromRight (6);
+    manualBtn.setBounds (tabs.removeFromRight (74));
     r.removeFromTop (8);
 
     mbView.setBounds (r); // Multiband tab fills the body; visibility toggles per tab
@@ -387,6 +422,22 @@ void GlueForgeEditor::savePresetToFile()
             if (auto xml = proc.apvts.copyState().createXml())
                 xml->writeTo (f.withFileExtension ("xml"));
         });
+}
+
+void GlueForgeEditor::openManual()
+{
+    // The manual PDF is embedded in the binary. Extract it to a temp file (once)
+    // and hand it to the OS default PDF viewer.
+    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("GlueForge");
+    dir.createDirectory();
+    auto pdf = dir.getChildFile ("GlueForge-Manual.pdf");
+
+    const auto* data = BinaryData::GlueForgeManual_pdf;
+    const auto  size = (size_t) BinaryData::GlueForgeManual_pdfSize;
+    if (! pdf.existsAsFile() || (size_t) pdf.getSize() != size)
+        pdf.replaceWithData (data, size);
+
+    pdf.startAsProcess();
 }
 
 void GlueForgeEditor::loadPresetFromFile()

@@ -18,10 +18,15 @@ namespace gf::ui
         The shape round-trips through the processor (APVTS state tree), so it
         recalls with the session, A/B and presets.
     */
-    class ShapeEditor : public juce::Component
+    class ShapeEditor : public juce::Component, public juce::SettableTooltipClient
     {
     public:
-        explicit ShapeEditor (GlueForgeProcessor& p) : proc (p) { fetchNodes(); }
+        explicit ShapeEditor (GlueForgeProcessor& p) : proc (p)
+        {
+            fetchNodes();
+            setTooltip ("Tempo-duck pump shape (one beat, looping in sync with the host). "
+                        "Drag a node to move it, drag a segment to bend it, double-click to add or remove a node.");
+        }
 
         // Called from the editor's timer: resync if the shape changed underneath
         // us (session load / A/B / preset), then move the playhead.

@@ -41,6 +41,10 @@ target_sources(GlueForge PRIVATE
 
 target_include_directories(GlueForge PRIVATE Source)
 
+# Embedded resources (the user-manual PDF, opened by the in-plugin Manual button).
+# Regenerate the PDF with scripts/build-manual.ps1; the committed file is what CI embeds.
+juce_add_binary_data(GlueForgeData SOURCES Resources/GlueForgeManual.pdf)
+
 target_compile_definitions(GlueForge PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
@@ -50,6 +54,7 @@ target_compile_definitions(GlueForge PUBLIC
 
 target_link_libraries(GlueForge
     PRIVATE
+        GlueForgeData
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
