@@ -498,6 +498,23 @@ TEST_CASE ("Multiband: per-band trim scales the band level", "[dsp][multiband][p
     REQUIRE (approx (minus6 / unity, juce::Decibels::decibelsToGain (-6.0f), 0.05f)); // ~0.5
 }
 
+TEST_CASE ("Multiband: bands compress independently with per-band params", "[dsp][multiband][phase9]")
+{
+    Multiband mb; mb.prepare (48000.0, 1, 512); mb.setCrossovers (200.0f, 2000.0f);
+
+    CompressorParameters lowP;  lowP.thresholdDb = -50.0f; lowP.ratio = 10.0f; lowP.attackMs = 2.0f; lowP.releaseMs = 50.0f;
+    CompressorParameters clean; clean.ratio = 1.0f;            // transparent
+    mb.setBandParams (0, lowP);   // low band crushes
+    mb.setBandParams (1, clean);
+    mb.setBandParams (2, clean);  // high band transparent
+    for (int i = 0; i < 3; ++i) mb.setBand (i, 0.0f, false);
+    mb.setSolo (-1);
+
+    REQUIRE (multibandOutRms (mb, 5000.0f) > 0.6f);  // high band untouched
+    REQUIRE (multibandOutRms (mb, 100.0f)  < 0.3f);  // low band heavily compressed
+    REQUIRE (mb.getBandGainReductionDb (0) < -3.0f); // and the low band reports its reduction
+}
+
 TEST_CASE ("Saturator: process() blends wet and dry at mix 0.5", "[dsp][sat][phase9]")
 {
     juce::AudioBuffer<float> b (1, 8);

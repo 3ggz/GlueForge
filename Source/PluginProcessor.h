@@ -64,6 +64,7 @@ public:
     float getCurrentGainReductionDb() const { return grMeterDb.load(); }
     float getInputLevelDb()  const { return inLevelDb.load(); }
     float getOutputLevelDb() const { return outLevelDb.load(); }
+    float getBandGainReductionDb (int band) const { return multiband.getBandGainReductionDb (band); }
 
     // Tempo-duck pump shape (the editable LFOTool-style envelope).
     float        getDuckPhase()        const { return duckPhase.load(); }
@@ -115,6 +116,8 @@ private:
     std::atomic<float>* mbXHighParam   = nullptr;
     std::atomic<float>* mbTrimParam[3]   = { nullptr, nullptr, nullptr };
     std::atomic<float>* mbBypassParam[3] = { nullptr, nullptr, nullptr };
+    std::atomic<float>* mbThreshParam[3] = { nullptr, nullptr, nullptr };
+    std::atomic<float>* mbRatioParam[3]  = { nullptr, nullptr, nullptr };
     std::atomic<float>* mbSoloParam    = nullptr;
     juce::AudioParameterBool* bypassParam = nullptr;
 
@@ -147,6 +150,8 @@ private:
     void handleAsyncUpdate() override;
     gf::dsp::CompressorParameters lastCp;               // last applied params (change detection)
     bool cpValid = false;
+    gf::dsp::CompressorParameters lastBandCp[3];        // per-band change detection (multiband)
+    bool mbCpValid = false;
     juce::AudioBuffer<float> detectionBuffer;           // key signal fed to the detector
     juce::AudioBuffer<float> dryBuffer;                 // dry copy for parallel (wet/dry) mix
     juce::LinearSmoothedValue<float> mixSmoothed;       // wet/dry, smoothed

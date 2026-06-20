@@ -86,6 +86,12 @@ GlueForgeProcessor::GlueForgeProcessor()
     mbBypassParam[0] = apvts.getRawParameterValue (gf::params::id::mbBypass1);
     mbBypassParam[1] = apvts.getRawParameterValue (gf::params::id::mbBypass2);
     mbBypassParam[2] = apvts.getRawParameterValue (gf::params::id::mbBypass3);
+    mbThreshParam[0] = apvts.getRawParameterValue (gf::params::id::mbThresh1);
+    mbThreshParam[1] = apvts.getRawParameterValue (gf::params::id::mbThresh2);
+    mbThreshParam[2] = apvts.getRawParameterValue (gf::params::id::mbThresh3);
+    mbRatioParam[0]  = apvts.getRawParameterValue (gf::params::id::mbRatio1);
+    mbRatioParam[1]  = apvts.getRawParameterValue (gf::params::id::mbRatio2);
+    mbRatioParam[2]  = apvts.getRawParameterValue (gf::params::id::mbRatio3);
     mbSoloParam    = apvts.getRawParameterValue (gf::params::id::mbSolo);
     bypassParam     = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (gf::params::id::bypass));
     jassert (gainParam != nullptr && bypassParam != nullptr && thresholdParam != nullptr
@@ -182,7 +188,8 @@ void GlueForgeProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     saturator.prepare (sampleRate, numOut);
     compressor.prepare (sampleRate, numOut);
     multiband.prepare (sampleRate, numOut, samplesPerBlock);
-    cpValid = false; // force coefficient recompute for the new sample rate on next block
+    cpValid = false;   // force coefficient recompute for the new sample rate on next block
+    mbCpValid = false;
 
     juce::dsp::ProcessSpec spec { sampleRate, (juce::uint32) samplesPerBlock, (juce::uint32) numOut };
     lookaheadDelay.prepare (spec); lookaheadDelay.reset();
@@ -380,10 +387,9 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         cp.rangeDb       = rangeParam->load();
         cp.stereoLink    = linkParam->load();
         cp.autoMakeup    = autoMakeupParam->load() >= 0.5f;
-        if (! cpValid || cp != lastCp)    // only recompute coefficients when something changed
+        if (! cpValid || cp != lastCp)    // single-compressor coefficient gate
         {
             compressor.setParameters (cp);
-            multiband.setCompressorParams (cp);
             lastCp  = cp;
             cpValid = true;
         }
@@ -392,7 +398,18 @@ void GlueForgeProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         {
             multiband.setCrossovers (mbXLowParam->load(), mbXHighParam->load());
             for (int b = 0; b < 3; ++b)
+            {
+                gf::dsp::CompressorParameters bandCp = cp;       // shared timing/knee/character/makeup
+                bandCp.thresholdDb = mbThreshParam[b]->load();   // ...with per-band threshold + ratio
+                bandCp.ratio       = mbRatioParam[b]->load();
+                if (! mbCpValid || bandCp != lastBandCp[b])      // per-band coefficient gate
+                {
+                    multiband.setBandParams (b, bandCp);
+                    lastBandCp[b] = bandCp;
+                }
                 multiband.setBand (b, mbTrimParam[b]->load(), mbBypassParam[b]->load() >= 0.5f);
+            }
+            mbCpValid = true;
             multiband.setSolo (juce::jlimit (-1, 2, (int) mbSoloParam->load() - 1)); // 0 None -> -1
             multiband.process (mainBus, detectionBuffer);
             grMeterDb.store (multiband.getGainReductionDb());

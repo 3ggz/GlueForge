@@ -50,6 +50,12 @@ namespace gf::params
         constexpr auto mbBypass2 = "mbbypass2";
         constexpr auto mbBypass3 = "mbbypass3";
         constexpr auto mbSolo    = "mbsolo";     // None / Low / Mid / High
+        constexpr auto mbThresh1 = "mbthresh1";  // per-band threshold, dB
+        constexpr auto mbThresh2 = "mbthresh2";
+        constexpr auto mbThresh3 = "mbthresh3";
+        constexpr auto mbRatio1  = "mbratio1";   // per-band ratio
+        constexpr auto mbRatio2  = "mbratio2";
+        constexpr auto mbRatio3  = "mbratio3";
         constexpr auto gain      = "gain";      // output gain, dB
         constexpr auto bypass    = "bypass";
     }
@@ -159,6 +165,12 @@ namespace gf::params
         p.push_back (floatParam (id::mbTrim3, "High Trim", NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f, "dB"));
         p.push_back (std::make_unique<AudioParameterChoice> (
             ParameterID { id::mbSolo, 1 }, "Solo", StringArray { "None", "Low", "Mid", "High" }, 0));
+        p.push_back (floatParam (id::mbThresh1, "Low Thr",  NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -18.0f, "dB"));
+        p.push_back (floatParam (id::mbThresh2, "Mid Thr",  NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -18.0f, "dB"));
+        p.push_back (floatParam (id::mbThresh3, "High Thr", NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -18.0f, "dB"));
+        p.push_back (floatParam (id::mbRatio1, "Low Ratio",  skewed (1.0f, 20.0f, 0.01f, 4.0f), 4.0f, ":1"));
+        p.push_back (floatParam (id::mbRatio2, "Mid Ratio",  skewed (1.0f, 20.0f, 0.01f, 4.0f), 4.0f, ":1"));
+        p.push_back (floatParam (id::mbRatio3, "High Ratio", skewed (1.0f, 20.0f, 0.01f, 4.0f), 4.0f, ":1"));
 
         p.push_back (floatParam (id::gain, "Output",
                                  NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB"));

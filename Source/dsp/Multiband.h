@@ -56,9 +56,21 @@ namespace gf::dsp
             apLow_.setCutoffFrequency (fMidHigh); dApLow_.setCutoffFrequency (fMidHigh);
         }
 
+        // Per-band parameters (each band is an independent compressor).
+        void setBandParams (int band, const CompressorParameters& p)
+        {
+            if (juce::isPositiveAndBelow (band, kBands)) comp_[(size_t) band].setParameters (p);
+        }
+
+        // Convenience: same params on every band.
         void setCompressorParams (const CompressorParameters& p)
         {
             for (auto& c : comp_) c.setParameters (p);
+        }
+
+        float getBandGainReductionDb (int band) const
+        {
+            return bandGr_[(size_t) juce::jlimit (0, kBands - 1, band)];
         }
 
         void setBand (int i, float trimDb, bool bypassed)
@@ -114,11 +126,12 @@ namespace gf::dsp
             float worst = 0.0f;
             for (int b = 0; b < kBands; ++b)
             {
-                if (bypass_[(size_t) b]) continue;
+                if (bypass_[(size_t) b]) { bandGr_[(size_t) b] = 0.0f; continue; }
                 juce::AudioBuffer<float> bm (bandMain_[(size_t) b].getArrayOfWritePointers(), ch, n);
                 juce::AudioBuffer<float> bd (bandDet_[(size_t) b].getArrayOfWritePointers(),  ch, n);
                 comp_[(size_t) b].process (bm, &bd);
-                worst = juce::jmin (worst, comp_[(size_t) b].getGainReductionDb());
+                bandGr_[(size_t) b] = comp_[(size_t) b].getGainReductionDb();
+                worst = juce::jmin (worst, bandGr_[(size_t) b]);
             }
             grMeterDb_ = worst;
 
@@ -147,5 +160,6 @@ namespace gf::dsp
         std::array<bool,  kBands> bypass_   { { false, false, false } };
         int   solo_      = -1;
         float grMeterDb_ = 0.0f;
+        std::array<float, kBands> bandGr_ { { 0.0f, 0.0f, 0.0f } };
     };
 }
