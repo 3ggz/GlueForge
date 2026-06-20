@@ -7,7 +7,9 @@
 
 namespace gf::dsp
 {
-    struct ShapeNode { float phase = 0.0f; float value = 0.0f; }; // value: 1 = open, 0 = fully ducked
+    // value: 1 = open, 0 = fully ducked. curve: tension of the segment AFTER this
+    // node, in [-1,1] (0 = linear; + bends the curve up, - bends it down).
+    struct ShapeNode { float phase = 0.0f; float value = 0.0f; float curve = 0.0f; };
 
     /**
         Editable pump/duck shape (LFOTool-style). Up to 16 nodes over one cycle
@@ -26,9 +28,9 @@ namespace gf::dsp
 
         void setDefault()
         {
-            nodes_[0] = { 0.0f, 0.0f };   // ducked on the downbeat
-            nodes_[1] = { 0.5f, 0.6f };
-            nodes_[2] = { 1.0f, 1.0f };   // recovered by the next beat
+            nodes_[0] = { 0.0f, 0.0f,  -0.35f }; // ducked on the downbeat, holds low then rises
+            nodes_[1] = { 0.5f, 0.55f, -0.2f };
+            nodes_[2] = { 1.0f, 1.0f,   0.0f };  // recovered by the next beat
             count_ = 3;
             rebuild();
         }
@@ -40,6 +42,7 @@ namespace gf::dsp
             {
                 nodes_[(size_t) i].phase = juce::jlimit (0.0f, 1.0f, in[i].phase);
                 nodes_[(size_t) i].value = juce::jlimit (0.0f, 1.0f, in[i].value);
+                nodes_[(size_t) i].curve = juce::jlimit (-1.0f, 1.0f, in[i].curve);
             }
             sanitize();
             rebuild();
@@ -67,7 +70,8 @@ namespace gf::dsp
             for (int i = 0; i < count_; ++i)
             {
                 if (i > 0) s << ' ';
-                s << juce::String (nodes_[(size_t) i].phase, 4) << ':' << juce::String (nodes_[(size_t) i].value, 4);
+                s << juce::String (nodes_[(size_t) i].phase, 4) << ':' << juce::String (nodes_[(size_t) i].value, 4)
+                  << ':' << juce::String (nodes_[(size_t) i].curve, 4);
             }
             return s;
         }
@@ -80,10 +84,11 @@ namespace gf::dsp
             {
                 if (n >= kMaxNodes) break;
                 const auto pv = juce::StringArray::fromTokens (t, ":", "");
-                if (pv.size() == 2)
+                if (pv.size() >= 2) // "p:v" (curve 0) or "p:v:c"
                 {
                     nodes_[(size_t) n].phase = juce::jlimit (0.0f, 1.0f, (float) pv[0].getDoubleValue());
                     nodes_[(size_t) n].value = juce::jlimit (0.0f, 1.0f, (float) pv[1].getDoubleValue());
+                    nodes_[(size_t) n].curve = pv.size() >= 3 ? juce::jlimit (-1.0f, 1.0f, (float) pv[2].getDoubleValue()) : 0.0f;
                     ++n;
                 }
             }
@@ -113,7 +118,9 @@ namespace gf::dsp
                 const auto& b = nodes_[(size_t) (seg + 1)];
                 const float denom = b.phase - a.phase;
                 const float t = denom > 1.0e-6f ? juce::jlimit (0.0f, 1.0f, (p - a.phase) / denom) : 0.0f;
-                lut_[(size_t) i] = a.value + t * (b.value - a.value);
+                const float k  = std::pow (2.0f, -a.curve * 3.0f); // segment tension -> power exponent (0 = linear)
+                const float tw = std::pow (t, k);
+                lut_[(size_t) i] = a.value + tw * (b.value - a.value);
             }
         }
 

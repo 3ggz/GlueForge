@@ -553,3 +553,21 @@ TEST_CASE ("DuckShape: fromString sanitizes (clamp, sort, endpoints)", "[dsp][sh
         if (i > 0) REQUIRE (s.getNode (i).phase >= s.getNode (i - 1).phase); // sorted
     }
 }
+
+TEST_CASE ("DuckShape: segment curve bends the interpolation", "[dsp][shape]")
+{
+    DuckShape lin;  ShapeNode nl[] = { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }; lin.setNodes (nl, 2);
+    DuckShape bent; ShapeNode nb[] = { { 0.0f, 0.0f, 0.8f }, { 1.0f, 1.0f, 0.0f } }; bent.setNodes (nb, 2);
+    REQUIRE (approx (lin.valueAt (0.5f), 0.5f, 0.01f));          // 0 curve = linear
+    REQUIRE (std::abs (bent.valueAt (0.5f) - 0.5f) > 0.1f);      // bent away from the straight line
+    REQUIRE (bent.valueAt (0.5f) > 0.5f);                        // +curve bends up
+}
+
+TEST_CASE ("DuckShape: curve survives toString/fromString", "[dsp][shape]")
+{
+    DuckShape a; ShapeNode n[] = { { 0.0f, 0.0f, 0.5f }, { 0.5f, 0.7f, -0.3f }, { 1.0f, 1.0f, 0.0f } };
+    a.setNodes (n, 3);
+    DuckShape b; b.fromString (a.toString());
+    REQUIRE (approx (a.valueAt (0.25f), b.valueAt (0.25f), 1.0e-3f));
+    REQUIRE (approx (a.valueAt (0.70f), b.valueAt (0.70f), 1.0e-3f));
+}

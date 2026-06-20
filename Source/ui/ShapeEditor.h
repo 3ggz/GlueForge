@@ -46,21 +46,37 @@ namespace gf::ui
         void mouseDown (const juce::MouseEvent& e) override
         {
             dragIndex_ = hitTest (e.position.toFloat());
+            segDrag_   = -1;
+            if (dragIndex_ < 0) // not on a node -> grab the segment under the cursor to bend it
+            {
+                segDrag_ = segmentAt (e.position.x);
+                if (segDrag_ >= 0) { segStartCurve_ = nodes_[(size_t) segDrag_].curve; segStartY_ = e.position.y; }
+            }
         }
 
         void mouseDrag (const juce::MouseEvent& e) override
         {
-            if (dragIndex_ < 0) return;
-            const auto nn = xyToNode (e.position.toFloat());
-            auto& nd = nodes_[(size_t) dragIndex_];
-            nd.value = nn.value;
-            const bool endpoint = (dragIndex_ == 0 || dragIndex_ == (int) nodes_.size() - 1);
-            if (! endpoint)
+            if (dragIndex_ >= 0)            // move a node
             {
-                const float lo = nodes_[(size_t) dragIndex_ - 1].phase + 0.002f;
-                const float hi = nodes_[(size_t) dragIndex_ + 1].phase - 0.002f;
-                nd.phase = juce::jlimit (lo, hi, nn.phase);
+                const auto nn = xyToNode (e.position.toFloat());
+                auto& nd = nodes_[(size_t) dragIndex_];
+                nd.value = nn.value;
+                const bool endpoint = (dragIndex_ == 0 || dragIndex_ == (int) nodes_.size() - 1);
+                if (! endpoint)
+                {
+                    const float lo = nodes_[(size_t) dragIndex_ - 1].phase + 0.002f;
+                    const float hi = nodes_[(size_t) dragIndex_ + 1].phase - 0.002f;
+                    nd.phase = juce::jlimit (lo, hi, nn.phase);
+                }
             }
+            else if (segDrag_ >= 0)         // bend a segment
+            {
+                const float dy = segStartY_ - e.position.y; // drag up = bend up
+                const float h  = juce::jmax (1.0f, area().getHeight());
+                nodes_[(size_t) segDrag_].curve = juce::jlimit (-1.0f, 1.0f, segStartCurve_ + (dy / h) * 2.0f);
+            }
+            else return;
+
             pushToProcessor();   // live: hear the change while dragging
             rebuildImage();
             repaint();
@@ -69,6 +85,7 @@ namespace gf::ui
         void mouseUp (const juce::MouseEvent&) override
         {
             dragIndex_ = -1;
+            segDrag_   = -1;
             fetchNodes();        // pick up the sanitized result
             rebuildImage();
         }
@@ -115,6 +132,16 @@ namespace gf::ui
             return -1;
         }
 
+        int segmentAt (float x) const
+        {
+            const auto b = area();
+            const float p = juce::jlimit (0.0f, 1.0f, (x - b.getX()) / juce::jmax (1.0f, b.getWidth()));
+            for (int i = 0; i < (int) nodes_.size() - 1; ++i)
+                if (p >= nodes_[(size_t) i].phase && p < nodes_[(size_t) (i + 1)].phase)
+                    return i;
+            return (int) nodes_.size() - 2;
+        }
+
         void fetchNodes()
         {
             gf::dsp::DuckShape s; s.fromString (proc.getDuckShapeString());
@@ -150,11 +177,16 @@ namespace gf::ui
                 g.drawHorizontalLine ((int) y, b.getX(), b.getRight());
             }
 
+            // Sample the actual (curved) shape so bends render smoothly.
+            gf::dsp::DuckShape s; s.setNodes (nodes_.data(), (int) nodes_.size());
             juce::Path curve;
-            for (size_t i = 0; i < nodes_.size(); ++i)
+            const int steps = juce::jmax (2, (int) b.getWidth());
+            for (int i = 0; i < steps; ++i)
             {
-                const auto pt = nodeToXY (nodes_[i]);
-                if (i == 0) curve.startNewSubPath (pt); else curve.lineTo (pt);
+                const float p = (float) i / (float) (steps - 1);
+                const float x = b.getX() + p * b.getWidth();
+                const float y = b.getY() + (1.0f - s.valueAt (p)) * b.getHeight();
+                if (i == 0) curve.startNewSubPath (x, y); else curve.lineTo (x, y);
             }
             juce::Path fill = curve;
             fill.lineTo (b.getRight(), b.getBottom());
@@ -178,6 +210,9 @@ namespace gf::ui
         juce::Image curveImage_;
         int   localGen_  = -1;
         int   dragIndex_ = -1;
+        int   segDrag_   = -1;            // segment being bent (-1 = none)
+        float segStartCurve_ = 0.0f;
+        float segStartY_     = 0.0f;
         float phase_     = 0.0f;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ShapeEditor)
