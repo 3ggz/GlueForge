@@ -4,6 +4,7 @@
 #include "Compressor.h"
 
 #include <array>
+#include <atomic>
 
 namespace gf::dsp
 {
@@ -70,7 +71,7 @@ namespace gf::dsp
 
         float getBandGainReductionDb (int band) const
         {
-            return bandGr_[(size_t) juce::jlimit (0, kBands - 1, band)];
+            return bandGr_[(size_t) juce::jlimit (0, kBands - 1, band)].load (std::memory_order_relaxed);
         }
 
         void setBand (int i, float trimDb, bool bypassed)
@@ -89,6 +90,7 @@ namespace gf::dsp
             for (auto* f : { &xo1_, &xo2_, &dXo1_, &dXo2_, &apLow_, &dApLow_ }) f->reset();
             for (auto& c : comp_) c.reset();
             grMeterDb_ = 0.0f;
+            for (auto& g : bandGr_) g.store (0.0f, std::memory_order_relaxed);
         }
 
         void process (juce::AudioBuffer<float>& main, const juce::AudioBuffer<float>& detection)
@@ -126,12 +128,13 @@ namespace gf::dsp
             float worst = 0.0f;
             for (int b = 0; b < kBands; ++b)
             {
-                if (bypass_[(size_t) b]) { bandGr_[(size_t) b] = 0.0f; continue; }
+                if (bypass_[(size_t) b]) { bandGr_[(size_t) b].store (0.0f, std::memory_order_relaxed); continue; }
                 juce::AudioBuffer<float> bm (bandMain_[(size_t) b].getArrayOfWritePointers(), ch, n);
                 juce::AudioBuffer<float> bd (bandDet_[(size_t) b].getArrayOfWritePointers(),  ch, n);
                 comp_[(size_t) b].process (bm, &bd);
-                bandGr_[(size_t) b] = comp_[(size_t) b].getGainReductionDb();
-                worst = juce::jmin (worst, bandGr_[(size_t) b]);
+                const float bgr = comp_[(size_t) b].getGainReductionDb();
+                bandGr_[(size_t) b].store (bgr, std::memory_order_relaxed);
+                worst = juce::jmin (worst, bgr);
             }
             grMeterDb_ = worst;
 
@@ -160,6 +163,6 @@ namespace gf::dsp
         std::array<bool,  kBands> bypass_   { { false, false, false } };
         int   solo_      = -1;
         float grMeterDb_ = 0.0f;
-        std::array<float, kBands> bandGr_ { { 0.0f, 0.0f, 0.0f } };
+        std::array<std::atomic<float>, kBands> bandGr_ {}; // per-band GR (audio writes, UI reads)
     };
 }
