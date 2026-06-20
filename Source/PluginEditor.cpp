@@ -4,7 +4,7 @@
 using namespace gf;
 
 GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
-    : juce::AudioProcessorEditor (&p), proc (p), shapeEditor (p)
+    : juce::AudioProcessorEditor (&p), proc (p), shapeEditor (p), mbView (p)
 {
     setLookAndFeel (&lnf);
 
@@ -103,23 +103,48 @@ GlueForgeEditor::GlueForgeEditor (GlueForgeProcessor& p)
     addRotary (params::id::lookahead, "Look");
     addCombo  (params::id::oversampling, "OS");
 
-    addToggle (params::id::midside,  "M/S");
-    addToggle (params::id::mbEnable, "MultiB");
-    addRotary (params::id::mbXLow,   "X Low");
-    addRotary (params::id::mbXHigh,  "X High");
-    addCombo  (params::id::mbSolo,   "Solo");
-    addRotary (params::id::mbTrim1,  "Low");
-    addToggle (params::id::mbBypass1, "Lo Byp");
-    addRotary (params::id::mbTrim2,  "Mid");
-    addToggle (params::id::mbBypass2, "Md Byp");
-    addRotary (params::id::mbTrim3,  "High");
-    addToggle (params::id::mbBypass3, "Hi Byp");
+    addToggle (params::id::midside, "M/S");
+
+    // Tabs (compressor / multiband) — the MB controls live in mbView.
+    addAndMakeVisible (mbView);
+    mbView.setVisible (false);
+    for (auto* t : { &compTabBtn, &mbTabBtn })
+    {
+        t->setClickingTogglesState (true);
+        t->setRadioGroupId (200);
+        addAndMakeVisible (*t);
+    }
+    compTabBtn.setToggleState (true, juce::dontSendNotification);
+    compTabBtn.onClick = [this] { showTab (0); };
+    mbTabBtn.onClick   = [this] { showTab (1); };
 
     setResizable (true, true);
-    setResizeLimits (880, 760, 1500, 1300);
-    setSize (960, 920);
+    setResizeLimits (900, 660, 1500, 1300);
+    setSize (980, 780);
 
     startTimerHz (30);
+    showTab (0);
+}
+
+void GlueForgeEditor::showTab (int t)
+{
+    currentTab = t;
+    const bool comp = (t == 0);
+
+    for (auto& kv : rotaries) { kv.second->s.setVisible (comp); kv.second->l.setVisible (comp); }
+    for (auto& kv : combos)   { kv.second->c.setVisible (comp); kv.second->l.setVisible (comp); }
+    for (auto& kv : toggles)  { kv.second->b.setVisible (comp); }
+    inMeter.setVisible (comp); grMeter.setVisible (comp); outMeter.setVisible (comp);
+    inLbl.setVisible (comp); grLbl.setVisible (comp); outLbl.setVisible (comp);
+    history.setVisible (comp);
+    displayCaption.setVisible (comp);
+    if (! comp) { curve.setVisible (false); shapeEditor.setVisible (false); }
+    else          lastTrigger = -1; // force the mode-aware display to re-show next tick
+
+    mbView.setVisible (! comp);
+    compTabBtn.setToggleState (comp, juce::dontSendNotification);
+    mbTabBtn.setToggleState (! comp, juce::dontSendNotification);
+    repaint();
 }
 
 GlueForgeEditor::~GlueForgeEditor()
@@ -188,6 +213,8 @@ void GlueForgeEditor::rebuildPresetMenu()
 
 void GlueForgeEditor::timerCallback()
 {
+    if (currentTab == 1) { mbView.tick(); return; } // multiband tab drives its own view
+
     inMeter.setLevelDb  (proc.getInputLevelDb());   inMeter.repaint();
     outMeter.setLevelDb (proc.getOutputLevelDb());  outMeter.repaint();
     const float gr = proc.getCurrentGainReductionDb();
@@ -265,8 +292,16 @@ void GlueForgeEditor::resized()
     top.removeFromLeft (2);
     nextBtn.setBounds (top.removeFromLeft (28));
 
-    r.removeFromTop (10);
+    r.removeFromTop (8);
+    auto tabs = r.removeFromTop (26);
+    compTabBtn.setBounds (tabs.removeFromLeft (120));
+    tabs.removeFromLeft (4);
+    mbTabBtn.setBounds (tabs.removeFromLeft (120));
+    r.removeFromTop (8);
 
+    mbView.setBounds (r); // Multiband tab fills the body; visibility toggles per tab
+
+    // --- Compressor page (shares the body region) ---
     // Displays: meters | transfer curve | GR history
     auto disp = r.removeFromTop (168);
     auto meters = disp.removeFromLeft (104);
@@ -300,14 +335,10 @@ void GlueForgeEditor::resized()
     const juce::StringArray row3 { params::id::trigger, params::id::scHpf, params::id::scLpf, params::id::scListen };
     const juce::StringArray row4 { params::id::duckRate, params::id::duckDepth,
                                    params::id::character, params::id::drive, params::id::satMix };
-    const juce::StringArray row5 { params::id::mix, params::id::lookahead, params::id::oversampling };
-    const juce::StringArray row6 { params::id::midside, params::id::mbEnable, params::id::mbXLow,
-                                   params::id::mbXHigh, params::id::mbSolo };
-    const juce::StringArray row7 { params::id::mbTrim1, params::id::mbBypass1, params::id::mbTrim2,
-                                   params::id::mbBypass2, params::id::mbTrim3, params::id::mbBypass3 };
+    const juce::StringArray row5 { params::id::mix, params::id::lookahead, params::id::oversampling, params::id::midside };
 
     rowHeaders.clear();
-    const int rh = r.getHeight() / 7;
+    const int rh = r.getHeight() / 5;
     auto section = [&] (juce::Rectangle<int> rowArea, const juce::String& title, const juce::StringArray& ids)
     {
         rowHeaders.push_back ({ title, rowArea.removeFromTop (13) });
@@ -317,9 +348,7 @@ void GlueForgeEditor::resized()
     section (r.removeFromTop (rh), "DETECTOR / OUTPUT",      row2);
     section (r.removeFromTop (rh), "SIDECHAIN",              row3);
     section (r.removeFromTop (rh), "TEMPO DUCK / CHARACTER", row4);
-    section (r.removeFromTop (rh), "MIX / QUALITY",          row5);
-    section (r.removeFromTop (rh), "MID-SIDE / MULTIBAND",   row6);
-    section (r, "MULTIBAND BANDS", row7);
+    section (r, "MIX / QUALITY", row5);
 }
 
 void GlueForgeEditor::paint (juce::Graphics& g)
@@ -330,14 +359,17 @@ void GlueForgeEditor::paint (juce::Graphics& g)
     g.drawText ("GLUEFORGE", getLocalBounds().removeFromTop (32).removeFromRight (130),
                 juce::Justification::centredRight, false);
 
-    // Section headers + thin separators above each control row.
-    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-    for (auto& h : rowHeaders)
+    // Section headers + separators — only on the compressor page.
+    if (currentTab == 0)
     {
-        g.setColour (ui::colours::dim);
-        g.drawText (h.first, h.second.reduced (4, 0), juce::Justification::centredLeft, false);
-        g.setColour (ui::colours::track.withAlpha (0.5f));
-        g.fillRect (h.second.getX(), h.second.getBottom() - 1, h.second.getWidth(), 1);
+        g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+        for (auto& h : rowHeaders)
+        {
+            g.setColour (ui::colours::dim);
+            g.drawText (h.first, h.second.reduced (4, 0), juce::Justification::centredLeft, false);
+            g.setColour (ui::colours::track.withAlpha (0.5f));
+            g.fillRect (h.second.getX(), h.second.getBottom() - 1, h.second.getWidth(), 1);
+        }
     }
 }
 

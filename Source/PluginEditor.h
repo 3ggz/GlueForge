@@ -5,6 +5,7 @@
 #include "ui/Components.h"
 #include "ui/Presets.h"
 #include "ui/ShapeEditor.h"
+#include "ui/MultibandView.h"
 
 #include <map>
 #include <memory>
@@ -57,6 +58,11 @@ private:
     gf::ui::ShapeEditor            shapeEditor;            // tempo-duck pump shape
     juce::Label displayCaption { {}, "TRANSFER CURVE" };  // names the centre display
     int lastTrigger = -1;                                 // for mode-aware display switching
+
+    gf::ui::MultibandView mbView;                          // the Multiband tab
+    juce::TextButton compTabBtn { "COMPRESSOR" }, mbTabBtn { "MULTIBAND" };
+    int currentTab = 0;                                   // 0 = compressor, 1 = multiband
+    void showTab (int t);
 
     // Top bar
     juce::ComboBox  presetBox;
